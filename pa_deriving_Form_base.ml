@@ -200,10 +200,11 @@ module Builder (Loc : Defs.Loc) = struct
             (fun field_name field_module ->
               <:str_item<
                 module $uid:field_module_name field_name$ = struct
+                  type enclosing_a = a
                   type enclosing_param_names = param_names
-                  type enclosing_tuple = tuple
                   type enclosing_deep_config = deep_config
-                  let project_tuple = $lid:project field_name$
+                  let project_default $Helpers.record_pattern record_fields$ =
+                    Some ($lid:field_name$)
                   let project_param_names = $lid:project field_name$
                   let project_config = $lid:project field_name$
                   include $id:ident_of_qname field_module$
@@ -280,7 +281,7 @@ module Builder (Loc : Defs.Loc) = struct
               ;;
               $Ast.stSem_of_list projections$
               $Ast.stSem_of_list field_modules$
-              let fields : (tuple, param_names, deep_config) field list =
+              let fields : (a, param_names, deep_config) field list =
                 $Helpers.expr_list field_module_exprs$
             end
             include Make(Options)
