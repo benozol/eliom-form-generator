@@ -1,6 +1,6 @@
 (*
   = TODO =
-   - disconnect param_names and type of params_type (for Form_unit)
+   - Rename tuple to repr (namely Eliom's)
 *)
 
 let debug fmt =
@@ -171,11 +171,11 @@ module Config = struct
     k { label ; default ; annotation ; template } arg
 end
 
-module type Tuple = sig
+module type Repr = sig
   type a
-  type tuple
-  val from_tuple : tuple -> a
-  val to_tuple : a -> tuple
+  type repr
+  val from_repr : repr -> a
+  val to_repr : a -> repr
 end
 
 module type Pre_form = sig
@@ -185,8 +185,8 @@ module type Pre_form = sig
   type config = (a, param_names, deep_config) Config.t
   val field_renderings : button_content option -> param_names -> config -> Field_rendering.t list
   val pre_render : bool -> button_content option -> param_names -> config -> form_content
-  include Tuple with type a := a
-  val params_type : string -> (tuple, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  include Repr with type a := a
+  val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val default_deep_config : deep_config
 end
 
@@ -200,7 +200,7 @@ module type Form = sig
   val field :
     (a, param_names, deep_config, unit,
      (unit, config) opt_field_configs_fun) Config.local_fun
-  val handler : (a -> 'res) -> (tuple -> 'res)
+  val handler : (a -> 'res) -> (repr -> 'res)
 end
 
 module type Field = sig
@@ -224,8 +224,8 @@ module type Options = sig
   type param_names
   type deep_config
   val default_deep_config : deep_config
-  include Tuple with type a := a
-  val params_type : string -> (tuple, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  include Repr with type a := a
+  val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val fields : (a, param_names, deep_config) field list
   val field_names : string list
   type ('arg, 'res) opt_field_configs_fun
@@ -236,7 +236,7 @@ end
 module Make :
   functor (Options : Options) -> Form
     with type a = Options.a
-    and type tuple = Options.tuple
+    and type repr = Options.repr
     and type param_names = Options.param_names
     and type deep_config = Options.deep_config
     and type config = (Options.a, Options.param_names, Options.deep_config) Config.t
@@ -294,8 +294,8 @@ module Make :
     let content = func (pre_render true)
     let field = func (fun submit () config -> assert (submit = None); config) ?submit:None
     let handler f =
-      fun tuple ->
-        f (from_tuple tuple)
+      fun repr ->
+        f (from_repr repr)
   end
 
 module type Atomic_options = sig
@@ -308,9 +308,9 @@ end
 module Make_atomic_options (Atomic_options : Atomic_options) = struct
   include Atomic_options
   type deep_config = unit
-  type tuple = a
-  let to_tuple x = x
-  let from_tuple x = x
+  type repr = a
+  let to_repr x = x
+  let from_repr x = x
   type ('arg, 'res) opt_field_configs_fun = 'arg -> 'res
   let default_template = default_template
   let fields = []
@@ -363,65 +363,73 @@ module Form_unit = struct
   include Make (Options)
 end
 
-(*
+
 module Form_list = struct
   module Make
-  : functor (Options : Options with type param_names = [`One of a] Eliom_parameter.param_name) -> Form
-  = functor (Options : Options with type a = a and type param_names = [`One of a] Eliom_parameter.param_name) -> struct
+  : functor (Options : Options with type param_names = string Eliom_parameter.setone Eliom_parameter.param_name) -> Form
+  = functor (Options : Options with type param_names = string Eliom_parameter.setone Eliom_parameter.param_name) -> struct
       module Options = struct
         type a = Options.a list
-        type tuple = Options.a list
-        type param_names = [`Set of Options.a] Eliom_parameter.param_name
-        let params_type prefix = Eliom_parameter.set Options.params_type prefix
+        type repr = Options.repr list
+        type param_names = [`Set of string] Eliom_parameter.param_name
+        let params_type prefix : (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type =
+          Eliom_parameter.set (Options.params_type : string -> (_, _, string Eliom_parameter.setone) Eliom_parameter.params_type :> string -> (_, _, [`One of string]) Eliom_parameter.params_type) prefix
         type deep_config = (Options.a, Options.param_names, Options.deep_config) Config.t option
         let default_deep_config = None
-        let to_tuple x = x
-        let from_tuple x = x
+        let to_repr = List.map Options.to_repr
+        let from_repr = List.map Options.from_repr
         type ('arg, 'res) opt_field_configs_fun =
             deep_config -> 'arg -> 'res
         let opt_field_configs_fun f = f
         let field_names = []
         let fields = []
-          (* let module Field = struct *)
-          (*   type enclosing_a = a *)
-          (*   type enclosing_param_names = param_names *)
-          (*   type enclosing_deep_config = deep_config *)
-          (*   let project_a [x] = x *)
-          (*   let project_param_names x = x *)
-          (*   let project_config x = x *)
-          (*   include Make (Options) *)
-          (* end in *)
-          (* [ ((module Field) : (a, param_names, deep_config) field) ] *)
-        module Field = Make (Options)
-        let default_template =
+        module Field = Make (struct
+          include (Options : module type of Options with type param_names := Options.param_names)
+          type param_names = [`Set of string] Eliom_parameter.param_name
+          let params_type prefix : (repr, _, param_names) Eliom_parameter.params_type =
+            failwith "Form_list.Field.params_type"
+          let fields = []
+          let default_template = []
+            (* List.map *)
+            (*   (fun (module Field : Field with type a =  *)
+            (*   (fun (field : (a, Options.param_names, deep_config) field) -> *)
+            (*     let module Field = (val field) in *)
+            (*     let module Field = struct *)
+            (*       include (Field : module type of Field with type enclosing_param_names := Field.enclosing_param_names) *)
+            (*       type enclosing_param_names = [`Set of string] Eliom_parameter.param_name *)
+            (*       let project_param_names x = x *)
+            (*     end in *)
+            (*     ((module Field) : (a, param_names, deep_config) field)) *)
+            (*   Options.fields *)
+        end)
+        let default_template : (a, param_names) template =
           let open Eliom_content.Html5.F in
-          Template
-            (fun ~is_outmost ?submit ?label ?annotation ?default ~param_names field_renderings ->
-              assert (field_renderings = []);
-              let field_renderings =
-                let fields =
-                  match default with
-                    | Some values -> List.map (fun x -> Some x) values
-                    | None -> Array.to_list (Array.make 5 None)
-                in
-                List.map
-                  (fun default ->
-                    let label = None in
-                    let annotation = None in
-                    let template = None in
-                    let local = { Config.label ; annotation ; default ; template } in
-                    let deep = Options.default_deep_config in
-                    let config = { Config.local ; deep } in
-                    let content = Field.pre_render false submit param_names config in
-                    { Field_rendering.label; content; annotation })
-                  fields
+          fun ~is_outmost ?submit ?label ?annotation ?default ~param_names field_renderings ->
+            assert (field_renderings = []);
+            let field_renderings =
+              let fields =
+                match default with
+                  | Some values -> List.map (fun x -> Some x) values
+                  | None -> Array.to_list (Array.make 5 None)
               in
-              template_table_fun ~is_outmost ~param_names ?submit field_renderings)
+              List.map
+                (fun default ->
+                  let label = None in
+                  let annotation = None in
+                  let template = None in
+                  let local = { Config.label ; annotation ; default ; template } in
+                  let deep = Options.default_deep_config in
+                  let config = { Config.local ; deep } in
+                  let content = Field.pre_render false submit param_names config in
+                  { Field_rendering.label; content; annotation })
+                fields
+            in
+            template_table ~is_outmost ~param_names ?submit field_renderings
       end
       include Make (Options)
   end
 end
-*)
+
 
 module Form_option = struct
 
@@ -445,7 +453,7 @@ module Form_option = struct
   module Make :
     functor (Options:Options) -> Form
       with type a = Options.a option
-      and type tuple = bool * Options.tuple option
+      and type repr = bool * Options.repr option
       and type param_names = [`One of bool] Eliom_parameter.param_name * Options.param_names
       and type deep_config = (Options.a, Options.param_names, Options.deep_config) Config.t option
       and type ('arg, 'res) opt_field_configs_fun =
@@ -454,7 +462,7 @@ module Form_option = struct
     functor (Options:Options) -> struct
       module Options = struct
         type a = Options.a option
-        type tuple = bool * Options.tuple option
+        type repr = bool * Options.repr option
         type param_names =
           [`One of bool] Eliom_parameter.param_name *
             Options.param_names
@@ -465,13 +473,13 @@ module Form_option = struct
         type deep_config = (Options.a, Options.param_names, Options.deep_config) Config.t option
         let default_deep_config = None
 
-        let to_tuple = function
+        let to_repr = function
           | None -> false, None
-          | Some x -> true, Some (Options.to_tuple x)
-        let from_tuple = function
+          | Some x -> true, Some (Options.to_repr x)
+        let from_repr = function
           | (false, _) -> None
-          | (true, Some x) -> Some (Options.from_tuple x)
-          | _ -> failwith "Form_option_functor.from_tuple"
+          | (true, Some x) -> Some (Options.from_repr x)
+          | _ -> failwith "Form_option_functor.from_repr"
 
         type ('arg, 'res) opt_field_configs_fun =
             deep_config -> 'arg -> 'res

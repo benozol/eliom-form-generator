@@ -152,7 +152,7 @@ module Builder (Loc : Defs.Loc) = struct
               Helpers.tuple_expr [none; sofar])
             (List.map (fun _ -> <:expr< None >>) form_module_names)
         in
-        let tuple_type = tuple_type (types (add_prefixes "tuple" form_module_names)) in
+        let tuple_type = tuple_type (types (add_prefixes "repr" form_module_names)) in
         let field_module_name = Printf.sprintf "Field_%s" in
         let tuple_expr =
           fold_right1
@@ -169,7 +169,7 @@ module Builder (Loc : Defs.Loc) = struct
               <:expr< $t$, $sofar$ >>)
             (List.map
                (fun field_name ->
-                 <:expr< $uid:form_module_name field_name$ . to_tuple $lid:field_name$ >>)
+                 <:expr< $uid:form_module_name field_name$ . to_repr $lid:field_name$ >>)
                field_names)
         in
         let tuple_pattern =
@@ -183,7 +183,7 @@ module Builder (Loc : Defs.Loc) = struct
         let from_tuple_bindings =
           List.map
             (fun field_name ->
-              field_name, <:expr< $uid:form_module_name field_name$ . from_tuple $lid:field_name$ >>)
+              field_name, <:expr< $uid:form_module_name field_name$ . from_repr $lid:field_name$ >>)
             field_names
         in
         let project = Printf.sprintf "project_%s" in
@@ -266,11 +266,11 @@ module Builder (Loc : Defs.Loc) = struct
               type param_names = $Helpers.Untranslate'.expr param_names$
               type deep_config = $deep_config$
               let default_deep_config = $exp:default_deep_config$
-              type tuple = $Helpers.Untranslate'.expr tuple_type$
+              type repr = $Helpers.Untranslate'.expr tuple_type$
               let field_names = $Helpers.expr_list field_name_strings$
-              let from_tuple $pat:tuple_pattern$ =
+              let from_repr $pat:tuple_pattern$ =
                 $Helpers.record_expr from_tuple_bindings$
-              let to_tuple $Helpers.record_pattern record_fields$ =
+              let to_repr $Helpers.record_pattern record_fields$ =
                 $to_tuple_expr$
               let params_type prefix = $params_type$
               type ('arg, 'res) opt_field_configs_fun =
