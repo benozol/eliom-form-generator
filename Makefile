@@ -10,7 +10,7 @@ server/deriving_Form.cmo: deriving_Form.ml | server
 	$(OCAMLC) -c -o $@ $(OPTS) -package eliom.server deriving_Form.ml
 
 # client/deriving_Form.cmo: deriving_Form.ml | server
-# 	$(OCAMLC) -c -o deriving_Form.cmo $(OPTS) -package eliom.client deriving_Form.ml
+# 	$(OCAMLC) -c -o $@ $(OPTS) -package eliom.client deriving_Form.ml
 
 %.cmo: %.ml
 	$(OCAMLC) $(PA_COPTS) -c -o $@ $<
@@ -32,5 +32,5 @@ install:
 	cp -r server `ocamlfind query $(NAME)`
 
 uninstall:
-	rm -rf `ocamlfind query $(NAME)`/server	# `ocamlfind query $(NAME)`/client
+	rm -rf `ocamlfind query $(NAME)`/server # `ocamlfind query $(NAME)`/client
 	ocamlfind remove $(NAME)
