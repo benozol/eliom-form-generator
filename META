@@ -1,4 +1,4 @@
-names="deriving_Form"
+names="deriving-eliom-form"
 version="0.1"
 description="Deriving Eliom forms from record type declarations"
 package "syntax" (
@@ -10,12 +10,12 @@ package "syntax_tc" (
   archive(preprocessor,syntax) = "pa_deriving_Form_base.cmo pa_deriving_Form_tc.cmo"
 )
 package "server" (
-  directory = "server"
   requires = "eliom.server"
+  directory = "server"
   archive(byte) = "deriving_Form.cmo"
 )
 package "client" (
- directory = "client"
  requires = "eliom.client"
+ directory = "client"
  archive(byte) = "deriving_Form.cmo"
 )
