@@ -265,6 +265,7 @@ module Builder (Loc : Defs.Loc) = struct
               $Ast.stSem_of_list form_modules$
               type param_names = $Helpers.Untranslate'.expr param_names$
               type deep_config = $deep_config$
+              type template_data = unit
               let default_deep_config = $exp:default_deep_config$
               type repr = $Helpers.Untranslate'.expr tuple_type$
               let field_names = $Helpers.expr_list field_name_strings$

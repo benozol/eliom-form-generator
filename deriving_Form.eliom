@@ -81,14 +81,15 @@ module Field_rendering = struct
   }
 end
 
-type ('a, 'param_names) template =
+type ('a, 'param_names, 'template_data) template =
   is_outmost:bool -> ?submit:button_content -> ?label:form_content ->
   ?annotation:form_content -> ?default:'a -> ?classes:string list ->
-  param_names:'param_names -> Field_rendering.t list -> form_content
+  ?template_data:'template_data -> param_names:'param_names -> Field_rendering.t list ->
+  form_content
 
-let template_concat : (_, _) template =
+let template_concat : (_, _, _) template =
   let open Eliom_content.Html5.F in
-  fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ~param_names field_renderings ->
+  fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ?template_data ~param_names field_renderings ->
     [ div ~a:[a_class classes]
         (List.map
            (fun { Field_rendering.label ; content ; annotation } ->
@@ -104,9 +105,9 @@ let maybe_get_option_map really opt f =
     option_get ~default:[] (option_map f opt)
   else []
 
-let template_table : (_, _) template =
+let template_table : (_, _, _) template =
   let open Eliom_content.Html5.F in
-  fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ~param_names field_renderings ->
+  fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ?template_data ~param_names field_renderings ->
     let captions =
       maybe_get_option_map is_outmost label
         (fun label ->
@@ -151,13 +152,17 @@ let default_template =
   template_table
 
 module Config = struct
-  type ('a, 'param_names, 'deep_config) local = {
+  type ('a, 'param_names, 'deep_config, 'template_data) local = {
     label : form_content option;
     annotation : form_content option;
     default : 'a option;
-    template : ('a, 'param_names) template option;
+    template : ('a, 'param_names, 'template_data) template option;
+    template_data : 'template_data option;
   }
-  let local_zero = { label = None; annotation = None; default = None; template = None }
+  let local_zero = {
+    label = None; annotation = None; default = None;
+    template = None ; template_data = None
+  }
   let rec option_or_by_field = function
     | [] -> local_zero
     | c1 :: [] -> c1
@@ -167,19 +172,21 @@ module Config = struct
            annotation = option_or [c1.annotation; c2.annotation];
            default = option_or [c1.default; c2.default];
            template = option_or [c1.template; c2.template];
+           template_data = option_or [c1.template_data; c2.template_data];
          } :: rest)
-  type ('a, 'param_names, 'deep_config) t = {
-    local : ('a, 'param_names, 'deep_config) local;
+  type ('a, 'param_names, 'deep_config, 'template_data) t = {
+    local : ('a, 'param_names, 'deep_config, 'template_data) local;
     deep : 'deep_config;
   }
-  type ('a, 'param_names, 'deep_config, 'arg, 'res) local_fun =
+  type ('a, 'param_names, 'deep_config, 'template_data, 'arg, 'res) local_fun =
     ?label:form_content ->
     ?annotation:form_content ->
     ?default:'a ->
-    ?template:('a, 'param_names) template ->
+    ?template:('a, 'param_names, 'template_data) template ->
+    ?template_data:'template_data ->
     'arg -> 'res
-  let local_fun k ?label ?annotation ?default ?template arg =
-    k { label ; default ; annotation ; template } arg
+  let local_fun k ?label ?annotation ?default ?template ?template_data arg =
+    k { label ; default ; annotation ; template ; template_data } arg
 end
 
 module type Repr = sig
@@ -193,7 +200,8 @@ module type Pre_form = sig
   type a
   type param_names
   type deep_config
-  type config = (a, param_names, deep_config) Config.t
+  type template_data
+  type config = (a, param_names, deep_config, template_data) Config.t
   val field_renderings : button_content option -> param_names -> config -> Field_rendering.t list
   val pre_render : bool -> button_content option -> param_names -> config -> form_content
   include Repr with type a := a
@@ -206,10 +214,10 @@ module type Form = sig
   type ('arg, 'res) opt_field_configs_fun
   val content :
     ?submit:button_content ->
-    (a, param_names, deep_config, unit,
+    (a, param_names, deep_config, template_data, unit,
      (param_names, form_content) opt_field_configs_fun) Config.local_fun
   val field :
-    (a, param_names, deep_config, unit,
+    (a, param_names, deep_config, template_data, unit,
      (unit, config) opt_field_configs_fun) Config.local_fun
   val handler : (a -> 'res) -> (repr -> 'res)
 end
@@ -234,6 +242,7 @@ module type Options = sig
   type a
   type param_names
   type deep_config
+  type template_data
   val default_deep_config : deep_config
   include Repr with type a := a
   val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
@@ -241,7 +250,7 @@ module type Options = sig
   val field_names : string list
   type ('arg, 'res) opt_field_configs_fun
   val opt_field_configs_fun : (deep_config -> 'arg -> 'res) -> ('arg, 'res) opt_field_configs_fun
-  val default_template : (a, param_names) template
+  val default_template : (a, param_names, template_data) template
 end
 
 module Make :
@@ -250,12 +259,15 @@ module Make :
     and type repr = Options.repr
     and type param_names = Options.param_names
     and type deep_config = Options.deep_config
-    and type config = (Options.a, Options.param_names, Options.deep_config) Config.t
+    and type template_data = Options.template_data
+    and type config = (Options.a, Options.param_names, Options.deep_config, Options.template_data) Config.t
     and type ('arg, 'res) opt_field_configs_fun = ('arg, 'res) Options.opt_field_configs_fun
 =
   functor (Options : Options) -> struct
+
     include Options
-    type config = (a, param_names, deep_config) Config.t
+
+    type config = (a, param_names, deep_config, template_data) Config.t
 
     let field_renderings submit param_names { Config.local ; deep } =
       List.map2
@@ -274,7 +286,7 @@ module Make :
               let default_local =
                 let label = Some [pcdata field_name] in
                 let default = option_bind Field.project_default local.Config.default in
-                { Config.label ; default ; template = None ; annotation = None }
+                { Config.label ; default ; template = None ; annotation = None ; template_data = None }
               in
               Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
             in
@@ -291,9 +303,9 @@ module Make :
         Options.fields
 
     let pre_render is_outmost submit param_names config =
-      let { Config.label ; annotation ; default ; template } = config.Config.local in
+      let { Config.label ; annotation ; default ; template ; template_data } = config.Config.local in
       let template = option_get ~default:Options.default_template template in
-      template ~is_outmost ?submit ?label ?annotation ?default ~param_names
+      template ~is_outmost ?submit ?label ?annotation ?default ~param_names ?template_data
         (field_renderings submit param_names config)
 
     let func k ?submit =
@@ -312,13 +324,14 @@ module Make :
 module type Atomic_options = sig
   type a
   type param_names
-  val default_template : (a, param_names) template
+  val default_template : (a, param_names, unit) template
   val params_type : string -> (a, [`WithoutSuffix], param_names) Eliom_parameter.params_type
 end
 
 module Make_atomic_options (Atomic_options : Atomic_options) = struct
   include Atomic_options
   type deep_config = unit
+  type template_data = unit
   type repr = a
   let to_repr x = x
   let from_repr x = x
@@ -341,7 +354,7 @@ module Form_string = struct
         type a = string
         type param_names = [`One of string] Eliom_parameter.param_name
         let params_type = Eliom_parameter.string
-        let default_template ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ~param_names field_renderings =
+        let default_template ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ?template_data ~param_names field_renderings =
           assert (field_renderings = []);
           let open Eliom_content.Html5.F in [
             string_input ~a:[a_class classes; a_required `Required; a_pattern "^.*$"]
@@ -359,7 +372,7 @@ module Form_int = struct
         type a = int
         type param_names = [`One of int] Eliom_parameter.param_name
         let params_type = Eliom_parameter.int
-        let default_template ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ~param_names field_renderings =
+        let default_template ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ?template_data ~param_names field_renderings =
           assert (field_renderings = []);
           let open Eliom_content.Html5.F in [
             int_input ~a:[a_required `Required; a_class classes]
@@ -377,7 +390,7 @@ module Form_unit = struct
         type a = unit
         type param_names = unit
         let params_type _ = Eliom_parameter.unit
-        let default_template ~is_outmost ?submit ?label ?annotation ?default ?classes ~param_names field_renderings =
+        let default_template ~is_outmost ?submit ?label ?annotation ?default ?classes ?template_data ~param_names field_renderings =
           assert (field_renderings = []);
           []
        end)
@@ -524,29 +537,36 @@ end
 
 module Form_option = struct
 
-  let field : 'a 'param_names 'deep_config .
+  type option_template_data = [`Checkbox_label of form_content]
+
+  let checkbox_label : form_content -> option_template_data =
+    fun x -> `Checkbox_label x
+
+  let field : 'a 'param_names 'deep_config 'template_data .
       ('a option,
        [`One of bool] Eliom_parameter.param_name * 'param_names,
-       ('a, 'param_names, 'deep_config) Config.t option,
-       ('a, 'param_names, 'deep_config) Config.t,
+       ('a, 'param_names, 'deep_config, 'template_data) Config.t option,
+       option_template_data,
+       ('a, 'param_names, 'deep_config, 'template_data) Config.t,
        ('a option,
         [`One of bool] Eliom_parameter.param_name * 'param_names,
-        ('a, 'param_names, 'deep_config) Config.t option
+        ('a, 'param_names, 'deep_config, 'template_data) Config.t option,
+        option_template_data
        ) Config.t
       ) Config.local_fun
       =
-    fun ?label ?annotation ?default ?template arg ->
+    fun ?label ?annotation ?default ?template ?template_data arg ->
       Config.local_fun
         (fun local deep ->
           { Config.local ; deep = Some deep })
-        ?label ?annotation ?default ?template arg
+        ?label ?annotation ?default ?template ?template_data arg
 
-  let template (tmpl : (_, _) template) : (_, _) template =
+  let template (tmpl : (_, _, _) template) : (_, _, option_template_data) template =
     fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[])
+      ?(template_data=checkbox_label [pcdata "some?"])
       ~param_names:(checkbox_param_name, param_names) field_renderings ->
         let default = option_get ~default:None default in
         let field_renderings =
-          let label = Some [pcdata "is some?"] in
           let set_checked = {Dom_html.element Js.t -> unit{
             fun (checkbox : Dom_html.element Js.t) ->
               match parent_with_class form_option_class checkbox with
@@ -577,13 +597,14 @@ module Form_option = struct
             }};
             checkbox
           in
+          let `Checkbox_label label = template_data in
           let checkbox_rendering =
-            { Field_rendering.label ; annotation = None ; content = [ checkbox ] }
+            { Field_rendering.label = Some label ; annotation = None ; content = [ checkbox ] }
           in
           checkbox_rendering :: field_renderings
         in
         let classes = form_option_class :: classes in
-        tmpl ~is_outmost ?submit ?label ?annotation ?default ~classes
+        tmpl ~is_outmost ?submit ?label ?annotation ?default ~classes ?template_data:None
           ~param_names field_renderings
 
   module Make :
@@ -591,9 +612,10 @@ module Form_option = struct
       with type a = Options.a option
       and type repr = bool * Options.repr option
       and type param_names = [`One of bool] Eliom_parameter.param_name * Options.param_names
-      and type deep_config = (Options.a, Options.param_names, Options.deep_config) Config.t option
+      and type template_data = option_template_data
+      and type deep_config = (Options.a, Options.param_names, Options.deep_config, Options.template_data) Config.t option
       and type ('arg, 'res) opt_field_configs_fun =
-            (Options.a, Options.param_names, Options.deep_config) Config.t option -> 'arg -> 'res
+            (Options.a, Options.param_names, Options.deep_config, Options.template_data) Config.t option -> 'arg -> 'res
   =
     functor (Options:Options) -> struct
       module Options = struct
@@ -602,11 +624,12 @@ module Form_option = struct
         type param_names =
           [`One of bool] Eliom_parameter.param_name *
             Options.param_names
+        type template_data = option_template_data
         let params_type prefix =
           Eliom_parameter.prod
             (Eliom_parameter.bool (prefix^"_is_some"))
             (Eliom_parameter.opt (Options.params_type (prefix^"_some")))
-        type deep_config = (Options.a, Options.param_names, Options.deep_config) Config.t option
+        type deep_config = (Options.a, Options.param_names, Options.deep_config, Options.template_data) Config.t option
         let default_deep_config = None
 
         let to_repr = function
