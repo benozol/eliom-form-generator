@@ -3,11 +3,11 @@ version="0.1"
 description="Deriving Eliom forms from record type declarations"
 package "syntax" (
   requires(syntax) = "deriving-ocsigen.syntax"
-  archive(preprocessor,syntax) = "pa_deriving_Form_base.cmo pa_deriving_Form.cmo"
+  archive(preprocessor,syntax) = "pa_deriving_Form.cma"
 )
 package "syntax_tc" (
   requires(syntax) = "deriving-ocsigen.syntax_tc"
-  archive(preprocessor,syntax) = "pa_deriving_Form_base.cmo pa_deriving_Form_tc.cmo"
+  archive(preprocessor,syntax) = "pa_deriving_Form_tc.cma"
 )
 package "server" (
   requires = "eliom.server"
