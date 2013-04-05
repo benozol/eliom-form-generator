@@ -469,6 +469,7 @@ module Form_int64 = struct
             ?(classes=[]) ?template_data:values_opt ~param_names field_renderings ->
           assert (field_renderings = []);
           let open Eliom_content.Html5.F in
+          let required_label = "please select" in
           match param_names with
           | `Param_names param_names -> begin
             match values_opt with
@@ -484,12 +485,15 @@ module Form_int64 = struct
                     Option ([], i, Some label, selected))
                   values
               in [
-                int64_select ~a:[a_class classes] ~required:(pcdata "please select one")
+                int64_select ~a:[a_class classes] ~required:(pcdata required_label)
                   ~name:param_names (List.hd options) (List.tl options);
                 input_marker;
               ]
             | Some values ->
-              failwith "Form_int64.default_template"
+              let open Eliom_content.Html5.F.Raw in
+              [ select
+                  ~a:[a_class classes; a_required `Required]
+                  [option ~a:[a_value ""] (pcdata required_label)] ]
           end
           | `Display -> [pcdata (option_get ~default:"" (option_map Int64.to_string default))]
        end)
