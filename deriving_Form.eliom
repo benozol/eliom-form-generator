@@ -153,6 +153,17 @@ let template_table : (_, _, _) template =
 let default_template =
   template_table
 
+let default_label_of_field_name s =
+  let s =
+    if Str.string_match (Str.regexp "[a-z]_+") s 0
+    then
+      let prefix_length = String.length (Str.matched_string s) in
+      String.sub s prefix_length (String.length s - prefix_length)
+    else s
+  in
+  let s = Str.global_replace (Str.regexp "_") " " s in
+  String.capitalize s
+
 module Config = struct
   type ('a, 'param_names, 'deep_config, 'template_data) local = {
     label : form_content option;
@@ -287,7 +298,7 @@ module Make :
             in
             let local =
               let default_local =
-                let label = Some [pcdata field_name] in
+                let label = Some [pcdata (default_label_of_field_name field_name)] in
                 let default = option_bind Field.project_default local.Config.default in
                 { Config.label ; default ; template = None ; annotation = None ; template_data = None }
               in
