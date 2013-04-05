@@ -221,7 +221,8 @@ module type Form = sig
   val field :
     (a, param_names, deep_config, template_data, unit,
      (unit, config) opt_field_configs_fun) Config.local_fun
-  val handler : (a -> 'res) -> (repr -> 'res)
+  val get_handler : (a -> 'post -> 'res) -> (repr -> 'post -> 'res)
+  val post_handler : ('get -> a -> 'res) -> ('get -> repr -> 'res)
 end
 
 module type Field = sig
@@ -318,9 +319,12 @@ module Make :
               k submit deep_arg { Config.local ; deep }))
     let content = func (pre_render true)
     let field = func (fun submit () config -> assert (submit = None); config) ?submit:None
-    let handler f =
-      fun repr ->
-        f (from_repr repr)
+    let get_handler f =
+      fun repr post ->
+        f (from_repr repr) post
+    let post_handler f =
+      fun get repr ->
+        f get (from_repr repr)
   end
 
 module type Atomic_options = sig
