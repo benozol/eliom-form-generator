@@ -22,6 +22,8 @@ let failwith fmt =
 type div_content = Html5_types.div_content Eliom_content.Html5.elt list
 type form_content = Html5_types.form_content Eliom_content_core.Html5.elt list
 type button_content = Html5_types.button_content Eliom_content_core.Html5.elt list
+type flow5 = Html5_types.flow5 Eliom_content_core.Html5.elt list
+type pcdata = Html5_types.pcdata Eliom_content_core.Html5.elt
 let pcdata = Eliom_content.Html5.F.pcdata
 
 let option_get ~default = function
