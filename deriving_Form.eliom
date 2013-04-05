@@ -81,10 +81,12 @@ module Field_rendering = struct
   }
 end
 
+type 'param_names or_display = [ `Param_names of 'param_names | `Display ]
+
 type ('a, 'param_names, 'template_data) template =
   is_outmost:bool -> ?submit:button_content -> ?label:form_content ->
   ?annotation:form_content -> ?default:'a -> ?classes:string list ->
-  ?template_data:'template_data -> param_names:'param_names -> Field_rendering.t list ->
+  ?template_data:'template_data -> param_names:('param_names or_display) -> Field_rendering.t list ->
   form_content
 
 let template_concat : 'a 'param_names 'template_data . ('a, 'param_names, 'template_data) template =
@@ -216,8 +218,8 @@ module type Pre_form = sig
   type template_data
   val default_template_data : ?default:a -> unit -> template_data option
   type config = (a, param_names, deep_config, template_data) Config.t
-  val field_renderings : button_content option -> param_names -> config -> Field_rendering.t list
-  val pre_render : bool -> button_content option -> param_names -> config -> form_content
+  val field_renderings : button_content option -> param_names or_display -> config -> Field_rendering.t list
+  val pre_render : bool -> button_content option -> param_names or_display -> config -> form_content
   include Repr with type a := a
   val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val default_deep_config : deep_config
@@ -228,11 +230,17 @@ module type Form = sig
   type ('arg, 'res) opt_field_configs_fun
   val content :
     ?submit:button_content ->
-    (a, param_names, deep_config, template_data, unit,
-     (param_names, form_content) opt_field_configs_fun) Config.local_fun
+    ( a, param_names, deep_config, template_data, unit,
+      (param_names, form_content) opt_field_configs_fun
+    ) Config.local_fun
+  val display :
+    ( a, param_names, deep_config, template_data, unit,
+      (unit, form_content) opt_field_configs_fun
+    ) Config.local_fun
   val field :
-    (a, param_names, deep_config, template_data, unit,
-     (unit, config) opt_field_configs_fun) Config.local_fun
+    ( a, param_names, deep_config, template_data, unit,
+      (unit, config) opt_field_configs_fun
+    ) Config.local_fun
   val get_handler : (a -> 'post -> 'res) -> (repr -> 'post -> 'res)
   val post_handler : ('get -> a -> 'res) -> ('get -> repr -> 'res)
 end
@@ -310,7 +318,11 @@ module Make :
             { config_from_deep with Config.local }
           in
           let content =
-            let param_names = Field.project_param_names param_names in
+            let param_names =
+              match param_names with
+                | `Display -> `Display
+                | `Param_names param_names -> `Param_names (Field.project_param_names param_names)
+            in
             Field.pre_render false submit param_names config
           in
           Config.({ Field_rendering.content ;
@@ -325,14 +337,23 @@ module Make :
       template ~is_outmost ?submit ?label ?annotation ?default ~param_names ?template_data
         (field_renderings submit param_names config)
 
-    let func k ?submit =
+    let func k f ?submit =
       Config.local_fun
         (fun local () ->
           Options.opt_field_configs_fun
             (fun deep deep_arg ->
-              k submit deep_arg { Config.local ; deep }))
-    let content = func (pre_render true)
-    let field = func (fun submit () config -> assert (submit = None); config) ?submit:None
+              k submit (f deep_arg) { Config.local ; deep }))
+
+    let content = func (pre_render true) (fun param_names -> `Param_names param_names)
+
+    let field = func (fun submit () config -> assert (submit = None); config) (fun x -> x) ?submit:None
+
+    let display
+        : (a, param_names, deep_config, template_data, unit,
+            (unit, form_content) opt_field_configs_fun)
+           Config.local_fun
+        = func (pre_render true) (fun () -> `Display) ?submit:None
+
     let get_handler f =
       fun repr post ->
         f (from_repr repr) post
@@ -389,10 +410,12 @@ let form_string_default_template can_be_empty =
       in
       let a =
         a_class (not_required_class_maybe @ classes) :: required_maybe @ pattern_maybe
-      in [
-        string_input ~a ~name:param_names ?value:default ~input_type:`Text ();
-        input_marker;
-      ]
+      in match param_names with
+        | `Param_names param_names -> [
+            string_input ~a ~name:param_names ?value:default ~input_type:`Text ();
+            input_marker;
+          ]
+        | `Display -> [ pcdata (option_get ~default:"" default) ]
 
 module Form_string = struct
   module Atomic_options = struct
@@ -419,11 +442,15 @@ module Form_int = struct
         let default_template ~is_outmost ?submit ?label ?annotation ?default
             ?(classes=[]) ?template_data ~param_names field_renderings =
           assert (field_renderings = []);
-          let open Eliom_content.Html5.F in [
-            int_input ~a:[a_required `Required; a_class classes]
-              ~name:param_names ?value:default ~input_type:`Number ();
-            input_marker;
-          ]
+          let open Eliom_content.Html5.F in
+          match param_names with
+            | `Param_names param_names -> [
+              int_input ~a:[a_required `Required; a_class classes]
+                ~name:param_names ?value:default ~input_type:`Number ();
+              input_marker;
+            ]
+            | `Display ->
+              [ pcdata (option_get ~default:"" (option_map string_of_int default))]
        end)
   include Make (Options)
 end
@@ -442,7 +469,9 @@ module Form_int64 = struct
             ?(classes=[]) ?template_data:values_opt ~param_names field_renderings ->
           assert (field_renderings = []);
           let open Eliom_content.Html5.F in
-          match values_opt with
+          match param_names with
+          | `Param_names param_names -> begin
+            match values_opt with
             | None -> [
               int64_input ~a:[a_required `Required; a_class classes]
                 ~name:param_names ?value:default ~input_type:`Number ();
@@ -461,6 +490,8 @@ module Form_int64 = struct
               ]
             | Some values ->
               failwith "Form_int64.default_template"
+          end
+          | `Display -> [pcdata (option_get ~default:"" (option_map Int64.to_string default))]
        end)
   include Make (Options)
 end
@@ -672,9 +703,13 @@ module Form_option = struct
     =
     fun the_template ->
     fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[])
-      ?(template_data=template_data ())
-      ~param_names:(checkbox_param_name, param_names)
-      field_renderings ->
+      ?(template_data=template_data ()) ~param_names field_renderings ->
+        let checkbox_param_name, param_names, local_param_names =
+          match param_names with
+          | `Param_names (checkbox_param_name, param_names) ->
+            `Param_names checkbox_param_name, `Param_names param_names, `Param_names ()
+          | `Display -> `Display, `Display, `Display
+        in
         let set_checked = {Dom_html.element Js.t -> unit{
           fun (checkbox : Dom_html.element Js.t) ->
             match parent_with_class form_option_class checkbox with
@@ -693,19 +728,22 @@ module Form_option = struct
         let field_rendering =
           let checkbox =
             let open Eliom_content.Html5.F in
-            let checked = option_get ~default:None default <> None in
-            let checkbox =
-              let a = [a_onclick onclick; a_class [form_option_checkbox_class]] in
-              Eliom_content.Html5.D.bool_checkbox ~a ~checked ~name:checkbox_param_name ()
-            in
-            ignore {unit{
-              Eliom_client.onload
+            match checkbox_param_name with
+            | `Display -> []
+            | `Param_names checkbox_param_name ->
+              let checked = option_get ~default:None default <> None in
+              let checkbox =
+                let a = [a_onclick onclick; a_class [form_option_checkbox_class]] in
+                Eliom_content.Html5.D.bool_checkbox ~a ~checked ~name:checkbox_param_name ()
+              in
+              ignore {unit{
+                Eliom_client.onload
                 (fun () ->
                   %set_checked (Eliom_content.Html5.To_dom.of_element %checkbox))
-            }};
-            checkbox
+              }};
+              [checkbox]
           in
-          let label = Some (option_get ~default:[] template_data#label @ [checkbox]) in
+          let label = Some (option_get ~default:[] template_data#label @ checkbox) in
           let content =
             let default = option_get ~default:None default in
             the_template ~is_outmost:false ?submit ?default ~param_names field_renderings
@@ -716,7 +754,7 @@ module Form_option = struct
         template_data#template ~is_outmost ?submit ?label
           ?annotation:template_data#annotation ?default ~classes
           ?template_data:template_data#template_data
-          ~param_names:() [field_rendering]
+          ~param_names:local_param_names [field_rendering]
 
   module Make :
     functor (Options:Options) -> Form
