@@ -371,39 +371,41 @@ let input_marker_class = "__eliom_form_input_marker"
 let input_marker =
   Eliom_content.Html5.F.(span ~a:[a_class [input_marker_class]] [])
 
+let form_string_default_template can_be_empty =
+  fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[])
+    ?template_data:opt_pattern ~param_names field_renderings ->
+      assert (field_renderings = []);
+      let open Eliom_content.Html5.F in
+      let not_required_class_maybe, required_maybe =
+        if can_be_empty then
+          [field_not_required_class], []
+        else
+          [], [a_required `Required]
+      in
+      let pattern_maybe =
+        option_get ~default:[]
+          (option_map (fun p -> [a_pattern p])
+             opt_pattern)
+      in
+      let a =
+        a_class (not_required_class_maybe @ classes) :: required_maybe @ pattern_maybe
+      in [
+        string_input ~a ~name:param_names ?value:default ~input_type:`Text ();
+        input_marker;
+      ]
+
 module Form_string = struct
   module Atomic_options = struct
     type a = string
     type param_names = [`One of string] Eliom_parameter.param_name
+    type template_data = string
+    let default_template_data ?default () = None
     let params_type = Eliom_parameter.string
-    let default_template ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ?template_data ~param_names field_renderings =
-      assert (field_renderings = []);
-      let open Eliom_content.Html5.F in [
-        string_input ~a:[a_class (field_not_required_class :: classes)]
-          ~name:param_names ?value:default ~input_type:`Text ();
-        input_marker;
-      ]
+    let default_template = form_string_default_template false
   end
   module Options = Make_atomic_options (Atomic_options)
   include Make (Options)
 end
-
-module Form_ne_string = struct
-  module Atomic_options = struct
-    include Form_string.Atomic_options
-    let params_type prefix = Eliom_parameter.guard Eliom_parameter.string prefix (fun x -> x <> "")
-    let default_template ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ?template_data ~param_names field_renderings =
-      assert (field_renderings = []);
-      let open Eliom_content.Html5.F in [
-        string_input ~a:[a_class classes]
-          ~name:param_names ?value:default ~input_type:`Text ();
-        input_marker;
-      ]
-  end
-  module Options = Make_atomic_options (Atomic_options)
-  include Make (Options)
-end
-type ne_string = string
 
 module Form_int = struct
   module Options =
