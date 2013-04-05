@@ -124,8 +124,10 @@ let template_table : (_, _, _) template =
       maybe_get_option_map is_outmost submit
         (fun submit ->
           [tr ~a:[a_class ["field"]]
-              [td ~a:[a_class ["form_submit"]; a_colspan 3]
-                  [button ~button_type:`Submit submit]]])
+              [td [];
+               td ~a:[a_class ["form_submit"]; a_colspan 3]
+                 [button ~button_type:`Submit submit];
+               td []]])
     in
     let fields =
       List.map
