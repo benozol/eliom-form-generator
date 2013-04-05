@@ -214,6 +214,7 @@ module type Pre_form = sig
   type param_names
   type deep_config
   type template_data
+  val default_template_data : ?default:a -> unit -> template_data option
   type config = (a, param_names, deep_config, template_data) Config.t
   val field_renderings : button_content option -> param_names -> config -> Field_rendering.t list
   val pre_render : bool -> button_content option -> param_names -> config -> form_content
@@ -256,8 +257,9 @@ module type Options = sig
   type a
   type param_names
   type deep_config
-  type template_data
   val default_deep_config : deep_config
+  type template_data
+  val default_template_data : ?default:a -> unit -> template_data option
   include Repr with type a := a
   val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val fields : (a, param_names, deep_config) field list
@@ -300,7 +302,8 @@ module Make :
               let default_local =
                 let label = Some [pcdata (default_label_of_field_name field_name)] in
                 let default = option_bind Field.project_default local.Config.default in
-                { Config.label ; default ; template = None ; annotation = None ; template_data = None }
+                let template_data = Field.default_template_data ?default () in
+                { Config.label ; default ; template = None ; annotation = None ; template_data }
               in
               Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
             in
@@ -341,14 +344,15 @@ module Make :
 module type Atomic_options = sig
   type a
   type param_names
-  val default_template : (a, param_names, unit) template
+  type template_data
+  val default_template_data : ?default:a -> unit -> template_data option
+  val default_template : (a, param_names, template_data) template
   val params_type : string -> (a, [`WithoutSuffix], param_names) Eliom_parameter.params_type
 end
 
 module Make_atomic_options (Atomic_options : Atomic_options) = struct
   include Atomic_options
   type deep_config = unit
-  type template_data = unit
   type repr = a
   let to_repr x = x
   let from_repr x = x
@@ -408,7 +412,10 @@ module Form_int = struct
         type a = int
         type param_names = [`One of int] Eliom_parameter.param_name
         let params_type = Eliom_parameter.int
-        let default_template ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ?template_data ~param_names field_renderings =
+        type template_data = unit
+        let default_template_data ?default () = None
+        let default_template ~is_outmost ?submit ?label ?annotation ?default
+            ?(classes=[]) ?template_data ~param_names field_renderings =
           assert (field_renderings = []);
           let open Eliom_content.Html5.F in [
             int_input ~a:[a_required `Required; a_class classes]
@@ -425,6 +432,8 @@ module Form_unit = struct
       (struct
         type a = unit
         type param_names = unit
+        type template_data = unit
+        let default_template_data ?default () = None
         let params_type _ = Eliom_parameter.unit
         let default_template ~is_outmost ?submit ?label ?annotation ?default ?classes ?template_data ~param_names field_renderings =
           assert (field_renderings = []);
@@ -686,6 +695,7 @@ module Form_option = struct
         type repr = bool * Options.repr option
         type param_names = Options.param_names option_param_names
         type template_data = (Options.a, Options.template_data) option_template_data
+        let default_template_data ?default () = None
         let params_type prefix =
           Eliom_parameter.prod
             (Eliom_parameter.bool (prefix^"_is_some"))
