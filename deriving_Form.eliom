@@ -428,6 +428,43 @@ module Form_int = struct
   include Make (Options)
 end
 
+module Form_int64 = struct
+  module Options =
+    Make_atomic_options
+      (struct
+        type a = int64
+        type param_names = [`One of int64] Eliom_parameter.param_name
+        let params_type = Eliom_parameter.int64
+        type template_data = (int64 * pcdata * bool) list
+        let default_template_data ?default () = None
+        let default_template : (a, param_names, template_data) template =
+          fun ~is_outmost ?submit ?label ?annotation ?default
+            ?(classes=[]) ?template_data:values_opt ~param_names field_renderings ->
+          assert (field_renderings = []);
+          let open Eliom_content.Html5.F in
+          match values_opt with
+            | None -> [
+              int64_input ~a:[a_required `Required; a_class classes]
+                ~name:param_names ?value:default ~input_type:`Number ();
+              input_marker;
+            ]
+            | Some values when values <> [] ->
+              let options =
+                List.map
+                  (function i, label, selected ->
+                    Option ([], i, Some label, selected))
+                  values
+              in [
+                int64_select ~a:[a_class classes] ~required:(pcdata "please select one")
+                  ~name:param_names (List.hd options) (List.tl options);
+                input_marker;
+              ]
+            | Some values ->
+              failwith "Form_int64.default_template"
+       end)
+  include Make (Options)
+end
+
 module Form_unit = struct
   module Options =
     Make_atomic_options
