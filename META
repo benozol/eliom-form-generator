@@ -10,12 +10,12 @@ package "syntax_tc" (
   archive(preprocessor,syntax) = "pa_deriving_Form_tc.cma"
 )
 package "server" (
-  requires = "eliom.server"
+  requires = "eliom.server str"
   directory = "server"
   archive(byte) = "deriving_Form.cmo"
 )
 package "client" (
- requires = "eliom.client"
+ requires = "eliom.client str"
  directory = "client"
  archive(byte) = "deriving_Form.cmo"
 )
