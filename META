@@ -1,6 +1,6 @@
-names="deriving-eliom-form"
-version="0.1"
-description="Deriving Eliom forms from record type declarations"
+names = "deriving-eliom-form"
+version = "0.1"
+description = "Derive Eliom forms from type declarations"
 package "syntax" (
   requires(syntax) = "deriving-ocsigen.syntax"
   archive(preprocessor,syntax) = "pa_deriving_Form.cma"

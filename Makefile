@@ -1,24 +1,31 @@
-NAME := deriving-eliom-form
+PKG_NAME := deriving-eliom-form
 ELIOMC = eliomc
 JS_OF_ELIOM = js_of_eliom
 OCAMLC = ocamlfind ocamlc
 
-TYPE_DIR = .
+SERVER_DIR = server
+CLIENT_DIR = client
+
+export ELIOM_TYPE_DIR = _server
+export ELIOM_SERVER_DIR = _server
+export ELIOM_CLIENT_DIR = _client
 
 OPTS := -thread -package deriving-ocsigen
 PA_COPTS := -package deriving-ocsigen.syntax,camlp4.quotations.o -syntax camlp4o
 PA_COPTS_TC := -package deriving-ocsigen.syntax_tc,camlp4.quotations.o -syntax camlp4o
 
-all: pa_deriving_Form.cma pa_deriving_Form_tc.cma server/deriving_Form.cmo client/deriving_Form.cmo
+.PHONY: all clean install uninstall
 
-$(TYPE_DIR)/deriving_Form.type_mli: deriving_Form.eliom
-	$(ELIOMC) -infer -o $@ -package js_of_ocaml $^
+all: pa_deriving_Form.cma pa_deriving_Form_tc.cma $(ELIOM_SERVER_DIR)/deriving_Form.cmo $(ELIOM_CLIENT_DIR)/deriving_Form.cmo
 
-server/deriving_Form.cmo: deriving_Form.eliom $(TYPE_DIR)/deriving_Form.type_mli | server
-	$(ELIOMC) -c -o $@ $(OPTS) -type-dir $(TYPE_DIR) -package js_of_ocaml deriving_Form.eliom
+$(TYPE_DIR)/%.type_mli: %.eliom
+	$(ELIOMC) -infer -package js_of_ocaml $^
 
-client/deriving_Form.cmo: deriving_Form.eliom $(TYPE_DIR)/deriving_Form.type_mli | server
-	$(JS_OF_ELIOM) -c -o $@ $(OPTS) -type-dir $(TYPE_DIR) deriving_Form.eliom
+$(ELIOM_SERVER_DIR)/%.cmo: %.eliom $(TYPE_DIR)/%.type_mli
+	$(ELIOMC) -c $(OPTS) $<
+
+$(ELIOM_CLIENT_DIR)/%.cmo: %.eliom $(TYPE_DIR)/%.type_mli
+	$(JS_OF_ELIOM) -c $(OPTS) $<
 
 %.cmo: %.ml
 	$(OCAMLC) $(PA_COPTS) -c -o $@ $<
@@ -35,16 +42,14 @@ pa_deriving_Form.cma: pa_deriving_Form_base.cmo pa_deriving_Form.cmo
 pa_deriving_Form_tc.cma: pa_deriving_Form_base.cmo pa_deriving_Form_tc.cmo
 	$(OCAMLC) -a -o $@ $^
 
-server client:
-	mkdir -p $@
-
 clean:
-	rm -rf *.cmi *.cmo *.type_mli server client
+	rm -rf *.cmi *.cmo *.cma $(ELIOM_TYPE_DIR) $(ELIOM_SERVER_DIR) $(ELIOM_CLIENT_DIR)
 
 install:
-	ocamlfind install $(NAME) META pa_deriving_Form.cma pa_deriving_Form_tc.cma
-	cp -r server client `ocamlfind query $(NAME)`
+	ocamlfind install $(PKG_NAME) META pa_deriving_Form.cma pa_deriving_Form_tc.cma
+	cp -r $(ELIOM_SERVER_DIR) `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR)
+	cp -r $(ELIOM_CLIENT_DIR) `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR)
 
 uninstall:
-	rm -rf `ocamlfind query $(NAME)`/server `ocamlfind query $(NAME)`/client
-	ocamlfind remove $(NAME)
+	rm -rf `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR) `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR)
+	ocamlfind remove $(PKG_NAME)
