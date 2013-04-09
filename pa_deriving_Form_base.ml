@@ -67,93 +67,110 @@ module Builder (Loc : Defs.Loc) = struct
     | [] -> [x]
     | hd :: tl -> hd :: append x tl
 
+  let form_module_name = Printf.sprintf "Form_%s"
+  let component_module_name = Printf.sprintf "Component_%s"
+
+  let get_simple_type = function
+    | `Constr (type_qname, type_params) ->
+      let type_params =
+        List.map
+          (function
+          | `Constr (type_qname, []) -> type_qname
+          | _ -> Base.fatal_error _loc "only simple type constructors as type argument allowed")
+          type_params
+      in
+      type_qname, type_params
+    | _ -> Base.fatal_error _loc "only simple types allowed"
+
+  let add_prefix prefix qname = prefix :: qname
+
+  let type_expr_from_qname qname = `Constr (List.rev qname, [])
+
+  let tuple_expr exprs =
+    fold_right1
+      (fun expr sofar ->
+        <:expr< ( $expr$, $sofar$ ) >>)
+      exprs
+
+  let tuple_pattern =
+    fold_right1
+      (fun t sofar ->
+        <:patt< ( $t$, $sofar$ ) >>)
+
+  let tuple_type =
+    fold_right1
+      (fun t sofar ->
+        <:ctyp< ( $t$ * $sofar$ ) >>)
+
+  let match_case pattern expr =
+    Ast.McArr (_loc, pattern, Ast.ExNil _loc, expr)
+
+  let component_module_decls  =
+    List.map2
+      (fun component_name (type_qname, type_params) ->
+        let module_qname = map_last form_module_name type_qname in
+        let me : Ast.module_expr =
+          match type_params with
+          | [] ->
+            <:module_expr< $id:ident_of_qname module_qname$ >>
+          | [type_param_qname] ->
+            let make_module_qname = append "Make" module_qname in
+            let options_module_qname =
+              append "Options"
+                (map_last form_module_name type_param_qname)
+            in
+            <:module_expr<
+              $id:ident_of_qname make_module_qname$
+                ($id:ident_of_qname options_module_qname$)
+            >>
+          | _ -> failwith "component_module_decls"
+        in
+        <:str_item< module $uid:component_module_name component_name$ = $mexp:me$ >>)
+
   let generate : Type.decl list -> Ast.str_item =
+    let (%) f g = fun x -> f (g x) in
     let for_decl : Type.decl -> Ast.str_item  = function
       | type_name, [], `Fresh (None, Type.Record record_fields, _), [], _ ->
-        let form_module_name type_name = "Form_"^type_name in
-        let field_names, types =
-          List.split
-            (List.map
-               (function
-                 | (field_name, ([], `Constr (type_qname, type_params)), _) ->
-                   let type_params =
-                     List.map
-                       (function
-                         | `Constr (type_qname, []) -> type_qname
-                         | _ -> Base.fatal_error _loc "only simple type constructors")
-                       type_params
-                   in
-                   field_name, (type_qname, type_params)
-                 | _ -> Base.fatal_error _loc "Form not allowed here")
-               record_fields)
+        let component_names, component_types =
+          let fields =
+            List.map
+              (fun (name, (poly_args, expr), _) ->
+                if poly_args <> [] then
+                  Base.fatal_error _loc "no polymorphic arguments allowed";
+                name, get_simple_type expr)
+              record_fields
+          in
+          List.split fields
         in
-        let form_modules =
-          List.map2
-            (fun field_name (type_qname, type_params) ->
-              let module_qname = map_last form_module_name type_qname in
-              let me : Ast.module_expr =
-                if type_params = [] then
-                  <:module_expr< $id:ident_of_qname module_qname$ >>
-                else
-                  let module_qname_make = append "Make" module_qname in
-                  List.fold_left
-                    (fun sofar name ->
-                      <:module_expr< $mexp:sofar$ ( $mexp:name$ ) >>)
-                    (<:module_expr< $id:ident_of_qname module_qname_make$ >>)
-                    (List.map
-                       (fun type_param_qname ->
-                         let id =
-                           ident_of_qname
-                             (append "Options"
-                                (map_last form_module_name type_param_qname))
-                         in
-                         <:module_expr< $id:id$ >>)
-                       type_params)
-              in
-              <:str_item< module $uid:form_module_name field_name$ = $mexp:me$ >>)
-            field_names
-            types
-        in
-        let form_module_names =
+        let component_module_decls = component_module_decls component_names component_types in
+        let component_module_names =
           List.map
             (function field_name ->
-              [form_module_name field_name])
-            field_names
+              [component_module_name field_name])
+            component_names
         in
-        let add_prefixes prefix qnames =
-          List.map
-            (fun qname ->
-              prefix :: qname)
-            qnames
+        let param_names_ctyp =
+          tuple_type
+            (List.map (Helpers.Untranslate'.expr % type_expr_from_qname % add_prefix "param_names")
+               component_module_names)
         in
-        let tuple_type =
-          fold_right1
-            (fun t sofar ->
-              `Tuple [t; sofar])
+        let deep_config_ctyp =
+          let optional typ = <:ctyp< $typ$ option >> in
+          tuple_type
+            (List.map (optional % Helpers.Untranslate'.expr %
+                         type_expr_from_qname % add_prefix "config")
+               component_module_names)
         in
-        let tuple_type' =
-          fold_right1
-            (fun t1 t2 ->
-              <:ctyp< $t1$ * $t2$ >>)
+        let default_deep_config_expr =
+          tuple_expr
+            (List.map (fun _ -> <:expr< None >>)
+               component_module_names)
         in
-        let types = List.map (fun qname -> `Constr (List.rev qname, [])) in
-        let param_names = tuple_type (types (add_prefixes "param_names" form_module_names)) in
-        let deep_config =
-          tuple_type'
-            (List.map
-               (fun typ ->
-                 <:ctyp< $Helpers.Untranslate'.expr typ$ option >>)
-               (types
-                  (add_prefixes "config" form_module_names)))
+        let repr_ctyp =
+          tuple_type
+            (List.map (Helpers.Untranslate'.expr % type_expr_from_qname % add_prefix "repr")
+               component_module_names)
         in
-        let default_deep_config =
-          fold_right1
-            (fun none sofar ->
-              Helpers.tuple_expr [none; sofar])
-            (List.map (fun _ -> <:expr< None >>) form_module_names)
-        in
-        let tuple_type = tuple_type (types (add_prefixes "repr" form_module_names)) in
-        let field_module_name = Printf.sprintf "Field_%s" in
         let tuple_expr =
           fold_right1
             (fun t sofar ->
@@ -161,7 +178,7 @@ module Builder (Loc : Defs.Loc) = struct
             (List.map
                (fun field_name ->
                  <:expr< $lid:field_name$ >>)
-               field_names)
+               component_names)
         in
         let to_tuple_expr =
           fold_right1
@@ -169,8 +186,8 @@ module Builder (Loc : Defs.Loc) = struct
               <:expr< $t$, $sofar$ >>)
             (List.map
                (fun field_name ->
-                 <:expr< $uid:form_module_name field_name$ . to_repr $lid:field_name$ >>)
-               field_names)
+                 <:expr< $uid:component_module_name field_name$ . to_repr $lid:field_name$ >>)
+               component_names)
         in
         let tuple_pattern =
           fold_right1
@@ -178,115 +195,123 @@ module Builder (Loc : Defs.Loc) = struct
               <:patt< $t$, $sofar$ >>)
             (List.map
                (fun name -> <:patt< $lid:name$ >>)
-               field_names)
+               component_names)
         in
         let from_tuple_bindings =
           List.map
             (fun field_name ->
-              field_name, <:expr< $uid:form_module_name field_name$ . from_repr $lid:field_name$ >>)
-            field_names
+              field_name, <:expr< $uid:component_module_name field_name$ . from_repr $lid:field_name$ >>)
+            component_names
         in
-        let project = Printf.sprintf "project_%s" in
-        let projections =
+        let component_name_strings =
           List.map
-            (fun field_name ->
-              <:str_item<
-                let $lid:project field_name$ $tuple_pattern$ = $lid:field_name$
-                  >>)
-            field_names
+            (fun component_name -> <:expr< $str:component_name$ >>)
+            component_names
         in
-        let field_modules =
-          List.map2
-            (fun field_name field_module ->
-              <:str_item<
-                module $uid:field_module_name field_name$ = struct
-                  type enclosing_a = a
-                  type enclosing_param_names = param_names
-                  type enclosing_deep_config = deep_config
-                  let project_default $Helpers.record_pattern record_fields$ =
-                    Some ($lid:field_name$)
-                  let project_param_names = $lid:project field_name$
-                  let project_config = $lid:project field_name$
-                  include $id:ident_of_qname field_module$
-                end
-              >>)
-            field_names
-            form_module_names
-        in
-        let field_module_exprs =
-          List.map
-            (fun field_name ->
-              <:expr< (module $uid:field_module_name field_name$) >>)
-            field_names
-        in
-        let field_name_strings =
-          List.map
-            (fun field_name -> <:expr< $str:field_name$ >>)
-            field_names
-        in
-        let opt_field_configs_fun_type : Type.expr =
+        let opt_component_configs_fun_type : Type.expr =
           List.fold_right
-            (fun field_name sofar ->
+            (fun component_name sofar ->
               `Label
                 (`Optional,
-                 field_name,
-                 `Constr ([form_module_name field_name; "config"], []),
+                 component_name,
+                 `Constr ([component_module_name component_name; "config"], []),
                  sofar))
-            field_names
+            component_names
             (`Function
                 (`Constr (["unit"], []),
                  `Function (`Param ("arg", None), `Param ("res", None))))
         in
-        let opt_field_configs_fun =
+        let opt_component_configs_fun =
           List.fold_right
-            (fun field_name sofar ->
-              <:expr< fun ? $lid:field_name$ -> $sofar$ >>)
-            field_names
+            (fun component_name sofar ->
+              <:expr< fun ? $lid:component_name$ -> $sofar$ >>)
+            component_names
             (<:expr< fun () arg -> k $tuple_expr$ arg >>)
         in
         let params_type =
           fold_right1
-            (fun field_type sofar ->
-              <:expr< Eliom_parameter.prod $field_type$ $sofar$ >>)
+            (fun component_type sofar ->
+              <:expr< Eliom_parameter.prod $component_type$ $sofar$ >>)
             (List.map
-               (fun field_name ->
-                 let suffix = "_"^field_name in
+               (fun component_name ->
+                 let suffix = "_"^component_name in
                  <:expr<
-                  $uid:form_module_name field_name$ . params_type
+                  $uid:component_module_name component_name$ . params_type
                     (prefix ^ $str:suffix$ ) >>)
-               field_names)
+               component_names)
+        in
+        let fields_expr =
+          let project = Printf.sprintf "project_%s" in
+          let projection_pel =
+            List.map
+              (fun field_name ->
+                <:patt< $lid:project field_name$ >>,
+                <:expr< fun $tuple_pattern$ -> $lid:field_name$ >>)
+              component_names
+          in
+          let component_module_decls =
+            let component_module component_name =
+              <:module_expr<
+                struct
+                  type enclosing_a = a
+                  type enclosing_param_names = param_names
+                  type enclosing_deep_config = deep_config
+                  let project_default $Helpers.record_pattern record_fields$ =
+                    Some ($lid:component_name$)
+                  let project_param_names = $lid:project component_name$
+                  let project_config = $lid:project component_name$
+                  include $uid:component_module_name component_name$
+                end
+              >>
+            in
+            let component_module_list =
+              Helpers.expr_list
+                (List.map
+                   (fun component_name ->
+                     <:expr< (module $uid:component_module_name component_name$) >>)
+                   component_names)
+            in
+            List.fold_right
+              (fun component_name sofar ->
+                <:expr<
+                  let module $uid:component_module_name component_name$ =
+                             $component_module component_name$
+                  in $sofar$ >>)
+              component_names
+              component_module_list
+          in
+          <:expr<
+            let $Ast.binding_of_pel projection_pel$ in
+            $component_module_decls$
+          >>
         in
         <:str_item<
           module $uid:form_module_name type_name$ = struct
             open Deriving_Form
             module Options = struct
               type a = $lid:type_name$
-              ;;
-              $Ast.stSem_of_list form_modules$
-              type param_names = $Helpers.Untranslate'.expr param_names$
-              type deep_config = $deep_config$
+              ;; $Ast.stSem_of_list component_module_decls$
+              type param_names = $param_names_ctyp$
+              type deep_config = $deep_config_ctyp$
               type template_data = unit
               let default_template_data ?default () = None
-              let default_deep_config = $exp:default_deep_config$
-              type repr = $Helpers.Untranslate'.expr tuple_type$
-              let field_names = $Helpers.expr_list field_name_strings$
+              let default_deep_config = $default_deep_config_expr$
+              type repr = $repr_ctyp$
+              let component_names = $Helpers.expr_list component_name_strings$
               let from_repr $pat:tuple_pattern$ =
                 $Helpers.record_expr from_tuple_bindings$
               let to_repr $Helpers.record_pattern record_fields$ =
                 $to_tuple_expr$
               let params_type prefix = $params_type$
-              type ('arg, 'res) opt_field_configs_fun =
-                $Helpers.Untranslate'.expr opt_field_configs_fun_type$
-              let opt_field_configs_fun k =
-                $exp:opt_field_configs_fun$
+              type ('arg, 'res) opt_component_configs_fun =
+                $Helpers.Untranslate'.expr opt_component_configs_fun_type$
+              let opt_component_configs_fun k =
+                $exp:opt_component_configs_fun$
               let default_template = Deriving_Form.default_template
-              ;;
-              $Ast.stSem_of_list projections$
-              $Ast.stSem_of_list field_modules$
               let fields : (a, param_names, deep_config) field list =
-                $Helpers.expr_list field_module_exprs$
+                $fields_expr$
             end
-            include Make(Options)
+            include Make_record (Options)
           end
         >>
       | _ -> Base.fatal_error _loc "Form not available here"
