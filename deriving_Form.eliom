@@ -325,7 +325,7 @@ module type Record_options = sig
   val fields : (a, param_names, deep_config) field list
 end
 
-module type Adt_options = sig
+module type Sum_options = sig
   include Base_options
   val variants : (a, param_names, deep_config) variant list
 end
@@ -352,8 +352,8 @@ module Make_base (Options : Base_options) = struct
 
 end
 
-module Make_adt :
-  functor (Options : Adt_options) -> Form
+module Make_sum :
+  functor (Options : Sum_options) -> Form
     with type a = Options.a
     and type repr = Options.repr
     and type param_names = Options.param_names
@@ -363,7 +363,7 @@ module Make_adt :
           ( Options.a, Options.param_names, Options.deep_config, Options.template_data
           ) Config.t
     and type ('arg, 'res) opt_component_configs_fun = ('arg, 'res) Options.opt_component_configs_fun
-= functor (Options : Adt_options) -> struct
+= functor (Options : Sum_options) -> struct
 
   include Make_base (Options)
 
