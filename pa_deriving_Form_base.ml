@@ -227,7 +227,7 @@ module Builder (Loc : Defs.Loc) = struct
         let from_tuple_bindings =
           List.map
             (fun field_name ->
-              field_name, <:expr< $uid:component_module_name field_name$ . from_repr $lid:field_name$ >>)
+              field_name, <:expr< $uid:component_module_name field_name$ . of_repr $lid:field_name$ >>)
             component_names
         in
         let component_name_strings =
@@ -444,7 +444,7 @@ module Builder (Loc : Defs.Loc) = struct
             in
             <:expr< function $Ast.mcOr_of_list match_cases$ >>
         in
-        let from_repr_expr =
+        let of_repr_expr =
           match repr with
             | Type.Record record_fields ->
               <:expr<
@@ -479,14 +479,14 @@ module Builder (Loc : Defs.Loc) = struct
                       else
                         <:expr<
                           $uid:variant_name$
-                            ($uid:component_module_name variant_name$ . from_repr $component_expr$)
+                            ($uid:component_module_name variant_name$ . of_repr $component_expr$)
                         >>
                     in
                     match_case pattern expr)
                   component_names component_types
               in
               let failure =
-                let message = Printf.sprintf "%s: from_repr" (form_module_name type_name) in
+                let message = Printf.sprintf "%s: of_repr" (form_module_name type_name) in
                 match_case ( <:patt< _ >> ) ( <:expr< failwith $str:message$ >> )
               in
               let match_cases = match_cases @ [ failure ] in
@@ -510,7 +510,7 @@ module Builder (Loc : Defs.Loc) = struct
               let default_deep_config = $default_deep_config_expr$
               type repr = $repr_ctyp$
               let component_names = $Helpers.expr_list component_name_strings$
-              let from_repr = $from_repr_expr$
+              let of_repr = $of_repr_expr$
               let to_repr = $to_repr_expr$
               let params_type = $params_type_expr$
               type ('arg, 'res) opt_component_configs_fun =

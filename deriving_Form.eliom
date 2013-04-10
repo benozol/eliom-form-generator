@@ -1,10 +1,3 @@
-(*
-
-= TODO =
-
- - rename from_repr to to_repr
-
-*)
 
 {server{
 let debug fmt =
@@ -234,7 +227,7 @@ end
 module type Repr = sig
   type a
   type repr
-  val from_repr : repr -> a
+  val of_repr : repr -> a
   val to_repr : a -> repr
 end
 
@@ -345,10 +338,10 @@ module Make_base (Options : Base_options) = struct
 
   let get_handler f =
     fun repr post ->
-      f (from_repr repr) post
+      f (of_repr repr) post
   let post_handler f =
     fun get repr ->
-      f get (from_repr repr)
+      f get (of_repr repr)
 
 end
 
@@ -526,7 +519,7 @@ module Make_atomic_options (Atomic_options : Atomic_options) = struct
   type deep_config = unit
   type repr = a
   let to_repr x = x
-  let from_repr x = x
+  let of_repr x = x
   type ('arg, 'res) opt_component_configs_fun = 'arg -> 'res
   let default_template = default_template
   let fields = []
@@ -681,7 +674,7 @@ end
 (*         type deep_config = (Options.a, Options.param_names, Options.deep_config) Config.t option *)
 (*         let default_deep_config = None *)
 (*         let to_repr = List.map Options.to_repr *)
-(*         let from_repr = List.map Options.from_repr *)
+(*         let of_repr = List.map Options.of_repr *)
 (*         type ('arg, 'res) opt_component_configs_fun = *)
 (*             deep_config -> 'arg -> 'res *)
 (*         let opt_component_configs_fun f = f *)
@@ -944,10 +937,10 @@ module Form_option = struct
         let to_repr = function
           | None -> false, None
           | Some x -> true, Some (Options.to_repr x)
-        let from_repr = function
+        let of_repr = function
           | (false, _) -> None
-          | (true, Some x) -> Some (Options.from_repr x)
-          | _ -> failwith "Form_option_functor.from_repr"
+          | (true, Some x) -> Some (Options.of_repr x)
+          | _ -> failwith "Form_option_functor.of_repr"
 
         type ('arg, 'res) opt_component_configs_fun =
             deep_config -> 'arg -> 'res
