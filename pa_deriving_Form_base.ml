@@ -244,16 +244,14 @@ module Builder (Loc : Defs.Loc) = struct
                  `Constr ([component_module_name component_name; "config"], []),
                  sofar))
             component_names
-            (`Function
-                (`Constr (["unit"], []),
-                 `Function (`Param ("arg", None), `Param ("res", None))))
+            (`Function (`Param ("arg", None), `Param ("res", None)))
         in
         let opt_component_configs_fun =
           List.fold_right
             (fun component_name sofar ->
               <:expr< fun ? $lid:String.uncapitalize component_name$ -> $sofar$ >>)
             component_names
-            (<:expr< fun () arg -> k $component_tuple_expr$ arg >>)
+            (<:expr< fun arg -> k $component_tuple_expr$ arg >>)
         in
         let params_type_expr =
           let product =

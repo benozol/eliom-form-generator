@@ -302,16 +302,14 @@ module type Form = sig
   val content :
     ?submit:button_content ->
     ( a, param_names, deep_config, template_data, unit,
-      (param_names, form_content) opt_component_configs_fun
+      (unit, param_names -> form_content) opt_component_configs_fun
     ) Config.local_fun
   val display :
     ( a, param_names, deep_config, template_data, unit,
-      (unit, form_content) opt_component_configs_fun
-    ) Config.local_fun
+      (unit, form_content) opt_component_configs_fun ) Config.local_fun
   val config :
     ( a, param_names, deep_config, template_data, unit,
-      (unit, config) opt_component_configs_fun
-    ) Config.local_fun
+      (unit, config) opt_component_configs_fun ) Config.local_fun
   val get_handler : (a -> 'post -> 'res) -> (repr -> 'post -> 'res)
   val post_handler : ('get -> a -> 'res) -> ('get -> repr -> 'res)
 end
@@ -367,12 +365,12 @@ module Make_base (Options : Base_options) = struct
   include Options
   let template_data = pre_template_data identity
   type config = (a, param_names, deep_config, template_data) Config.t
-  let full_config_fun k f =
-    Config.local_fun
-      (fun local () ->
-        Options.opt_component_configs_fun
-          (fun deep deep_arg ->
-            k (f deep_arg) { Config.local ; deep }))
+  (* let full_config_fun k f = *)
+  (*   Config.local_fun *)
+  (*     (fun local () -> *)
+  (*       Options.opt_component_configs_fun *)
+  (*         (fun deep -> *)
+  (*           k (f deep_arg) { Config.local ; deep })) *)
   let get_handler f =
     fun repr post ->
       f (of_repr repr) post
@@ -470,7 +468,11 @@ module Make_sum
   include Make_base (Options')
 
   let config =
-    full_config_fun (fun () config -> config) (fun x -> x)
+    Config.local_fun
+      (fun local () ->
+        Options.opt_component_configs_fun
+          (fun deep () ->
+            { Config.local ; deep }))
 
   let variant_renderings submit (param_names : param_names or_display)
       { Config.local ; deep } variant_selection =
@@ -602,12 +604,23 @@ module Make_sum
                is_outmost; submit; label; annotation; default; param_names;
                template_data; classes = None; component_renderings  }
 
-  let content ?submit =
-    full_config_fun (pre_render true submit)
-      (fun param_names -> `Param_names param_names)
+  let content ?submit : (_, _, _, _, _, _) Config.local_fun =
+    Config.local_fun
+      (fun local () ->
+        Options.opt_component_configs_fun
+          (fun deep () ->
+            fun param_names ->
+              pre_render true submit
+                (`Param_names param_names)
+                { Config.local ; deep }))
 
   let display =
-    full_config_fun (pre_render true None) (fun () -> `Display)
+    Config.local_fun
+      (fun local () ->
+        Options.opt_component_configs_fun
+          (fun deep () ->
+            pre_render true None `Display { Config.local ; deep }))
+
 end
 
 (******************************************************************************)
@@ -671,7 +684,11 @@ module Make_record :
         Options.fields
 
     let config =
-      full_config_fun (fun () config -> config) (fun x -> x)
+      Config.local_fun
+        (fun local () ->
+          Options.opt_component_configs_fun
+            (fun deep () ->
+              { Config.local ; deep }))
 
     let pre_render is_outmost submit param_names config =
       let { Config.label ; annotation ; default ; template ; template_data = template_data_opt } = config.Config.local in
@@ -683,11 +700,23 @@ module Make_record :
 
 
     let content ?submit =
-      full_config_fun (pre_render true submit)
-        (fun param_names -> `Param_names param_names)
+      Config.local_fun
+        (fun local () ->
+          Options.opt_component_configs_fun
+            (fun deep () ->
+              fun param_names ->
+                pre_render true submit
+                  (`Param_names param_names)
+                  { Config.local ; deep }))
 
     let display =
-      full_config_fun (pre_render true None) (fun () -> `Display)
+      Config.local_fun
+        (fun local () ->
+          Options.opt_component_configs_fun
+            (fun deep () ->
+              pre_render true None
+                `Display { Config.local ; deep }))
+
   end
 
 (******************************************************************************)
@@ -722,7 +751,7 @@ module Make_atomic_options (Atomic_options : Atomic_options) = struct
   let fields = []
   let component_names = []
   let default_deep_config = ()
-  let opt_component_configs_fun f x = f () x
+  let opt_component_configs_fun k = k ()
 end
 
 let component_not_required_class = "__eliom_form_component_not_required"
@@ -1161,7 +1190,7 @@ module Form_option = struct
         type ('arg, 'res) opt_component_configs_fun =
             deep_config -> 'arg -> 'res
 
-        let opt_component_configs_fun f = f
+        let opt_component_configs_fun f deep_config arg = f deep_config arg
 
         let component_names = [ "" ]
 
