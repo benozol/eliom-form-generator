@@ -178,7 +178,7 @@ module Builder (Loc : Defs.Loc) = struct
           match repr with
           | Type.Record _ -> basic
           | Type.Sum _ ->
-            <:ctyp< [`Radio of string] Eliom_parameter.param_name * $basic$ >>
+            <:ctyp< [`One of string] Eliom_parameter.param_name * $basic$ >>
         in
         let deep_config_ctyp =
           let optional typ = <:ctyp< $typ$ option >> in
@@ -205,7 +205,7 @@ module Builder (Loc : Defs.Loc) = struct
                 tuple_type
                   (List.map (optional % Helpers.Untranslate'.expr) tuple)
               in
-              <:ctyp< string option * $option_tuple$ >>
+              <:ctyp< string * $option_tuple$ >>
         in
         let component_tuple_expr =
           tuple_expr
@@ -287,7 +287,7 @@ module Builder (Loc : Defs.Loc) = struct
               <:expr<
                 fun prefix ->
                   Eliom_parameter.prod
-                    (Eliom_parameter.radio Eliom_parameter.string (prefix^"_constructor"))
+                    (Eliom_parameter.string (prefix^"_constructor"))
                     $product optional_params_types$
               >>
         in
@@ -343,7 +343,7 @@ module Builder (Loc : Defs.Loc) = struct
           in
           let component_module_decls =
             let component_module component_name =
-              let sum_only =
+              let is_constructor_decl =
                 match repr with
                   | Type.Record _ -> <:str_item< >>
                   | Type.Sum _ ->
@@ -364,7 +364,6 @@ module Builder (Loc : Defs.Loc) = struct
                       <:expr< function $Ast.mcOr_of_list match_cases$ >>
                     in
                     <:str_item<
-                      let project_selector_param_name = fst
                       let is_constructor = $is_constructor_expr$
                     >>
               in
@@ -376,7 +375,7 @@ module Builder (Loc : Defs.Loc) = struct
                   let project_default = $project_default_expr component_name$
                   let project_param_names = $project_param_names_expr component_name$
                   let project_config = $lid:project component_name$
-                  ;; $sum_only$
+                  ;; $is_constructor_decl$
                   include $uid:component_module_name component_name$
                 end
               >>
@@ -437,7 +436,7 @@ module Builder (Loc : Defs.Loc) = struct
                                <:expr< None >>)
                            component_names)
                     in
-                    <:expr< Some $str:variant_name$, $data$ >>
+                    <:expr< $str:variant_name$, $data$ >>
                   in
                   match_case pattern expr)
                 component_names component_types
@@ -471,7 +470,7 @@ module Builder (Loc : Defs.Loc) = struct
                         component_names
                     in
                     let pattern =
-                      <:patt< Some $str:variant_name$, $tuple_pattern data$ >>
+                      <:patt< $str:variant_name$, $tuple_pattern data$ >>
                     in
                     let expr =
                       if variant_type_opt = None then
@@ -497,6 +496,9 @@ module Builder (Loc : Defs.Loc) = struct
             | Type.Record _ -> "Make_record", "fields", "field"
             | Type.Sum _ -> "Make_sum", "variants", "variant"
         in
+        let project_selector_param_name_decl =
+          <:str_item< let project_selector_param_name = fst >>
+        in
         <:str_item<
           module $uid:form_module_name type_name$ = struct
             open Deriving_Form
@@ -505,8 +507,7 @@ module Builder (Loc : Defs.Loc) = struct
               ;; $Ast.stSem_of_list component_module_decls$
               type param_names = $param_names_ctyp$
               type deep_config = $deep_config_ctyp$
-              type template_data = unit
-              let default_template_data ?default () = None
+              include Template_data_unit
               let default_deep_config = $default_deep_config_expr$
               type repr = $repr_ctyp$
               let component_names = $Helpers.expr_list component_name_strings$
@@ -519,8 +520,9 @@ module Builder (Loc : Defs.Loc) = struct
                 $exp:opt_component_configs_fun$
               let default_template = Deriving_Form.default_template
               let $lid:components_list_name$ :
-                  (a, param_names, deep_config) $lid:component_type_name$ list =
+                (a, param_names, deep_config) $lid:component_type_name$ list =
                 $fields_expr$
+              ;; $project_selector_param_name_decl$
             end
             include $uid:make_module_name$ (Options)
           end
