@@ -57,6 +57,7 @@ let list_filter_some li =
     (List.filter (fun x -> x <> None) li)
 
 let identity x = x
+let (%) f g x = f (g x)
 
 module String_map = struct
   include Map.Make (String)
@@ -81,6 +82,18 @@ module String_map = struct
         | None -> sofar)
       li empty
 end
+
+(******************************************************************************)
+
+let form_class = "__eliom_form"
+let form_sum_class = "__eliom_form_sum"
+let form_sum_radio_class = "__eliom_form_sum_radio"
+let form_sum_dropdown_class = "__eliom_form_sum_dropdown"
+let form_record_class = "__eliom_form_record"
+let form_option_class = "__eliom_form_option"
+let form_option_checkbox_class = "__eliom_form_option_checkbox"
+let component_not_required_class = "__eliom_form_component_not_required"
+let input_marker_class = "__eliom_form_input_marker"
 
 module Component_rendering = struct
   type t = {
@@ -123,23 +136,21 @@ module Template = struct
         ~template_data ~param_names component_renderings
 end
 
-let form_class = "__eliom_form"
-
 let template_concat : (_, _, _) Template.t =
   fun arguments ->
     Template.template
       (let open Eliom_content.Html5.F in
        fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ~template_data
-    ~param_names component_renderings ->
+         ~param_names component_renderings ->
            [ div ~a:[a_class (form_class :: classes)]
-        (List.map
-           (fun { Component_rendering.label ; selector ; content ; annotation } ->
-             div [
-               div (option_get ~default:[] selector) ;
-               div (option_get ~default:[] label) ;
-               div content ;
-               div (option_get ~default:[] annotation) ;
-             ])
+               (List.map
+                  (fun { Component_rendering.label ; selector ; content ; annotation } ->
+                    div [
+                      div (option_get ~default:[] selector) ;
+                      div (option_get ~default:[] label) ;
+                      div content ;
+                      div (option_get ~default:[] annotation) ;
+                    ])
                   component_renderings) ])
       arguments
 
@@ -226,10 +237,11 @@ module Config = struct
     default : 'a option;
     template : ('a, 'param_names, 'template_data) Template.t option;
     template_data : 'template_data option;
+    classes : string list option;
   }
   let local_zero = {
     label = None; annotation = None; default = None;
-    template = None ; template_data = None
+    template = None ; template_data = None; classes = None;
   }
   let rec option_or_by_field = function
     | [] -> local_zero
@@ -241,6 +253,7 @@ module Config = struct
            default = option_or [c1.default; c2.default];
            template = option_or [c1.template; c2.template];
            template_data = option_or [c1.template_data; c2.template_data];
+           classes = option_or [c1.classes; c2.classes];
          } :: rest)
   type ('a, 'param_names, 'deep_config, 'template_data) t = {
     local : ('a, 'param_names, 'deep_config, 'template_data) local;
@@ -250,14 +263,14 @@ module Config = struct
     ?label:form_content ->
     ?annotation:form_content ->
     ?default:'a ->
+    ?classes:string list ->
     ?template:('a, 'param_names, 'template_data) Template.t ->
     ?template_data:'template_data ->
     'arg -> 'res
-  let local_fun k ?label ?annotation ?default ?template ?template_data arg =
-    k { label ; default ; annotation ; template ; template_data } arg
+  let local_fun k ?label ?annotation ?default ?classes ?template ?template_data arg =
+    k { label ; default ; annotation ; template ; template_data ; classes } arg
 end
 
-(******************************************************************************)
 (******************************************************************************)
 
 module type Repr = sig
@@ -365,12 +378,6 @@ module Make_base (Options : Base_options) = struct
   include Options
   let template_data = pre_template_data identity
   type config = (a, param_names, deep_config, template_data) Config.t
-  (* let full_config_fun k f = *)
-  (*   Config.local_fun *)
-  (*     (fun local () -> *)
-  (*       Options.opt_component_configs_fun *)
-  (*         (fun deep -> *)
-  (*           k (f deep_arg) { Config.local ; deep })) *)
   let get_handler f =
     fun repr post ->
       f (of_repr repr) post
@@ -407,50 +414,37 @@ module Make_sum
           ('arg, 'res) Options.opt_component_configs_fun
 = functor (Options : Sum_options) -> struct
 
-  let import_template_arguments :
-      variant_selection:variant_selection ->
-      (_, _, Options.template_data) Template.arguments ->
-      (_, _, Options.template_data sum_template_data) Template.arguments =
-    fun ~variant_selection
-      { Template.is_outmost; submit; label; annotation; default;
-        classes; template_data; param_names; component_renderings } ->
-      let template_data = variant_selection, template_data in
-      { Template.is_outmost; submit; label; annotation; default;
-        classes; param_names; component_renderings; template_data }
-
-  let export_template_arguments :
+  let template_arguments_to_options :
       (_, _, Options.template_data sum_template_data) Template.arguments ->
-      variant_selection * (_, _, Options.template_data) Template.arguments =
+      (_, _, Options.template_data) Template.arguments =
     fun { Template.is_outmost; submit; label; annotation; default;
           classes; template_data = (variant_selection, template_data);
           param_names; component_renderings } ->
-      variant_selection,
+      let classes =
+        let variant_selection_class =
+          match variant_selection with
+          | `Drop_down -> form_sum_dropdown_class
+          | `Radio -> form_sum_radio_class
+        in
+        Some ([form_class; form_sum_class; variant_selection_class ]
+              @ option_get ~default:[] classes)
+      in
       { Template.is_outmost; submit; label; annotation; default;
         classes; param_names; component_renderings; template_data }
 
   type template_data' = Options.template_data sum_template_data
   type 'res template_data_fun' =
     ('res Options.template_data_fun) sum_template_data_fun
-  module Options' : module type of Options with
-                      type template_data = template_data' and
-                      type 'res template_data_fun = 'res template_data_fun' and
-                      type a = Options.a and
-                      type repr = Options.repr and
-                      type param_names = Options.param_names and
-                      type deep_config = Options.deep_config and
-                      type ('arg, 'res) opt_component_configs_fun =
-                        ('arg, 'res) Options.opt_component_configs_fun =
-  struct
-    include
-      (Options : module type of Options with
-                   type template_data := Options.template_data and
-                   type 'res template_data_fun := 'res Options.template_data_fun and
-                   type a = Options.a and
-                   type repr = Options.repr and
-                   type param_names = Options.param_names and
-                   type deep_config = Options.deep_config and
-                   type ('arg, 'res) opt_component_configs_fun =
-                     ('arg, 'res) Options.opt_component_configs_fun )
+  module Options' = struct
+    include (Options : module type of Options with
+                         type template_data := Options.template_data and
+                         type 'res template_data_fun := 'res Options.template_data_fun and
+                         type a = Options.a and
+                         type repr = Options.repr and
+                         type param_names = Options.param_names and
+                         type deep_config = Options.deep_config and
+                         type ('arg, 'res) opt_component_configs_fun =
+                           ('arg, 'res) Options.opt_component_configs_fun )
     type template_data = Options.template_data sum_template_data
     type 'res template_data_fun =
       ('res Options.template_data_fun) sum_template_data_fun
@@ -460,9 +454,8 @@ module Make_sum
     let apply_template_data_fun (f : _ template_data_fun) =
         Options.apply_template_data_fun (f ())
     let default_template =
-      fun arguments ->
-        Options.default_template
-          (snd (export_template_arguments arguments))
+      fun args ->
+        Options.default_template (template_arguments_to_options args)
   end
 
   include Make_base (Options')
@@ -527,77 +520,82 @@ module Make_sum
     in
     first @
     list_filter_some
-    (List.map2
-       (fun variant_name
-         (module Variant : Variant with
-           type enclosing_a = a and
-           type enclosing_param_names = param_names and
-           type enclosing_deep_config = deep_config)
-           ->
-         let config =
-           let config_from_deep =
-             option_get
-                   ~default:{ Config.local = Config.local_zero ;
-                              deep = Variant.default_deep_config }
-               (Variant.project_config deep)
-           in
-           let local =
-             let default_local =
-               let label = Some [pcdata (default_label_of_component_name variant_name)] in
-               let default = option_bind Variant.project_default local.Config.default in
-               let template_data =
-                 Some (Variant.apply_template_data_fun (Variant.pre_template_data identity))
-               in
-               { Config.label ; default ; template = None ; annotation = None ; template_data }
+      (List.map2
+         (fun variant_name
+           (module Variant : Variant with
+              type enclosing_a = a and
+              type enclosing_param_names = param_names and
+              type enclosing_deep_config = deep_config)
+         ->
+           let config =
+             let config_from_deep =
+               option_get
+                 ~default:{ Config.local = Config.local_zero ;
+                            deep = Variant.default_deep_config }
+                 (Variant.project_config deep)
              in
-             Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
+             let local =
+               let default_local =
+                 let label = Some [pcdata (default_label_of_component_name variant_name)] in
+                 let default = option_bind Variant.project_default local.Config.default in
+                 let template_data =
+                   Some (Variant.apply_template_data_fun (Variant.pre_template_data identity))
+                 in
+                 { Config.label ; default ;
+                   template = None ; annotation = None ;
+                   template_data ; classes = None }
+               in
+               Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
+             in
+             { config_from_deep with Config.local }
            in
-           { config_from_deep with Config.local }
-         in
-         let is_constructor =
-           option_get_map ~default:false ~f:Variant.is_constructor local.Config.default
-         in
-         if param_names = `Display && not is_constructor then
-           None
-         else
-           let selector =
-                 match variant_selection with
-                 | `Radio -> begin
-             match param_names with
-                     | `Display -> None
-             | `Param_names param_names ->
-                       let name = Options.project_selector_param_name param_names in
-               let open Eliom_content.Html5.F in
-                       Some [  string_radio_required ~checked:is_constructor ~name
-                                ~value:variant_name () ]
-                 end
-                 | `Drop_down -> None
+           let is_constructor =
+             option_get_map ~default:false ~f:Variant.is_constructor local.Config.default
            in
-           let content =
-            let param_names =
-              match param_names with
-                | `Display -> `Display
-                | `Param_names param_names -> `Param_names (Variant.project_param_names param_names)
-            in
-            Variant.pre_render false submit param_names config
-           in
-               Some { Component_rendering.content; selector ;
-                  label = Config.(config.local.label) ;
-                  annotation = Config.(config.local.annotation) })
-      Options.component_names
-      Options.variants)
+           if param_names = `Display && not is_constructor then
+             None
+           else
+             let selector =
+               match variant_selection with
+               | `Radio -> begin
+                 match param_names with
+                 | `Display -> None
+                 | `Param_names param_names ->
+                   let name = Options.project_selector_param_name param_names in
+                   let open Eliom_content.Html5.F in
+                   Some [  string_radio_required ~checked:is_constructor ~name
+                            ~value:variant_name () ]
+               end
+               | `Drop_down -> None
+             in
+             let content =
+               let param_names =
+                 match param_names with
+                 | `Display -> `Display
+                 | `Param_names param_names -> `Param_names (Variant.project_param_names param_names)
+               in
+               Variant.pre_render false submit param_names config
+             in
+             Some { Component_rendering.content; selector ;
+                    label = Config.(config.local.label) ;
+                    annotation = Config.(config.local.annotation) })
+         Options.component_names
+         Options.variants)
 
 
   let pre_render is_outmost submit param_names config =
-    let { Config.label ; annotation ; default ; template ; template_data = template_data_opt } = config.Config.local in
-    let variant_selection, template_data =
-      option_get' ~default:(fun () -> apply_template_data_fun template_data) template_data_opt
+    let { Config.label ; annotation ; default ;
+          template ; template_data = template_data_opt } =
+      config.Config.local in
+    let variant_selection, _ as template_data =
+      option_get' ~default:(fun () -> apply_template_data_fun (pre_template_data identity)) template_data_opt
     in
     let template =
-      let f tmpl arguments =
-        tmpl (import_template_arguments ~variant_selection arguments)
-      in
-      option_get_map ~default:Options.default_template ~f template
+      option_get
+        ~default:(fun args ->
+          Options.default_template
+            (template_arguments_to_options args))
+        template
     in
     let component_renderings = variant_renderings submit param_names config variant_selection in
     template { Template.
@@ -662,7 +660,8 @@ module Make_record :
                 let label = Some [pcdata (default_label_of_component_name field_name)] in
                 let default = option_bind Field.project_default local.Config.default in
                 let template_data = Some (Field.apply_template_data_fun (Field.pre_template_data identity)) in
-                { Config.label ; default ; template = None ; annotation = None ; template_data }
+                { Config.label ; default ; template_data ;
+                  template = None ; annotation = None ; classes = None }
               in
               Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
             in
@@ -691,11 +690,13 @@ module Make_record :
               { Config.local ; deep }))
 
     let pre_render is_outmost submit param_names config =
-      let { Config.label ; annotation ; default ; template ; template_data = template_data_opt } = config.Config.local in
+      let { Config.label ; annotation ; default ; template ; classes ; template_data = template_data_opt } = config.Config.local in
       let template_data = option_get' ~default:(fun () -> apply_template_data_fun template_data) template_data_opt in
       let template = option_get ~default:Options.default_template template in
-      template { Template.
-                 is_outmost; submit; label; annotation; default; param_names; template_data; classes = None;
+      let classes = Some ([form_class; form_record_class]
+                          @ option_get ~default:[] classes) in
+      template { Template.is_outmost; submit; label; annotation;
+                 default; param_names; template_data; classes;
                  component_renderings = field_renderings submit param_names config }
 
 
@@ -754,8 +755,6 @@ module Make_atomic_options (Atomic_options : Atomic_options) = struct
   let opt_component_configs_fun k = k ()
 end
 
-let component_not_required_class = "__eliom_form_component_not_required"
-let input_marker_class = "__eliom_form_input_marker"
 let input_marker =
   Eliom_content.Html5.F.(span ~a:[a_class [input_marker_class]] [])
 
@@ -961,8 +960,6 @@ end
 (* end *)
 
 {shared{
-  let form_option_class = "__eliom_form_option"
-  let form_option_checkbox_class = "__eliom_form_option_checkbox"
 }}
 
 {client{
@@ -1058,11 +1055,11 @@ module Form_option = struct
         ) Config.t
       ) Config.local_fun
       =
-    fun ?label ?annotation ?default ?template ?template_data arg ->
+    fun ?label ?annotation ?default ?classes ?template ?template_data arg ->
       Config.local_fun
         (fun local deep ->
           { Config.local ; deep = Some deep })
-        ?label ?annotation ?default ?template ?template_data arg
+        ?label ?annotation ?default ?classes ?template ?template_data arg
 
   let option_template : 'a 'param_names 'template_data .
       'template_data ->
