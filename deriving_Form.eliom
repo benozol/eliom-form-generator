@@ -43,6 +43,10 @@ let option_to_list = function
 let option_bind f = function
   | Some x -> f x
   | None -> None
+let maybe_get_option_map really opt f =
+  if really then
+    option_get ~default:[] (option_map f opt)
+  else []
 let some x = Some x
 let rec option_or = function
   | [] -> None
@@ -87,7 +91,7 @@ module Component_rendering = struct
   }
 end
 
-type 'param_names or_display = [ `Param_names of 'param_names | `Display ]
+type 'param_names or_display = [ `Display | `Param_names of 'param_names ]
 
 module Template = struct
 
@@ -103,25 +107,25 @@ module Template = struct
     component_renderings : Component_rendering.t list ;
   }
 
+  type ('a, 'param_names, 'template_data) t =
+    ('a, 'param_names, 'template_data) arguments -> form_content
+
   let arguments
       ~is_outmost ?submit ?label ?annotation ?default ?classes
       ~template_data ~param_names component_renderings =
     { is_outmost ; submit ; label ; annotation ; default ; classes ;
       template_data ; param_names ; component_renderings }
 
-  type ('a, 'param_names, 'template_data) t =
-    ('a, 'param_names, 'template_data) arguments -> form_content
-
   let template f =
     fun { is_outmost ; submit ; label ; annotation ; default ; classes ;
           template_data ; param_names ; component_renderings } ->
-      f ~is_outmost ?submit ?label ?annotation ?default ?classes ~template_data
-        ~param_names component_renderings
+      f ~is_outmost ?submit ?label ?annotation ?default ?classes
+        ~template_data ~param_names component_renderings
 end
 
 let form_class = "__eliom_form"
 
-let template_concat : ('a, 'param_names, 'template_data) Template.t =
+let template_concat : (_, _, _) Template.t =
   fun arguments ->
     Template.template
       (let open Eliom_content.Html5.F in
@@ -138,11 +142,6 @@ let template_concat : ('a, 'param_names, 'template_data) Template.t =
              ])
                   component_renderings) ])
       arguments
-
-let maybe_get_option_map really opt f =
-  if really then
-    option_get ~default:[] (option_map f opt)
-  else []
 
 let template_table =
   fun arguments ->
@@ -211,7 +210,7 @@ let default_template =
 
 let default_label_of_component_name s =
   let s =
-    if Str.string_match (Str.regexp "[a-z]_+") s 0
+    if Str.string_match (Str.regexp "[a-zA-Z]_+") s 0
     then
       let prefix_length = String.length (Str.matched_string s) in
       String.sub s prefix_length (String.length s - prefix_length)
@@ -258,42 +257,48 @@ module Config = struct
     k { label ; default ; annotation ; template ; template_data } arg
 end
 
+(******************************************************************************)
+(******************************************************************************)
+
 module type Repr = sig
-  type a
+  type t
   type repr
-  val of_repr : repr -> a
-  val to_repr : a -> repr
+  val of_repr : repr -> t
+  val to_repr : t -> repr
+end
+
+module type Template_data = sig
+  type template_data
+  type 'res template_data_fun
+  val pre_template_data : (template_data -> 'res) -> 'res template_data_fun
+  val apply_template_data_fun : 'res template_data_fun -> 'res
 end
 
 module type Base_options = sig
   type a
   type param_names
   type deep_config
-  type template_data
-  type 'res template_data_fun
   type ('arg, 'res) opt_component_configs_fun
-  include Repr with type a := a
+  include Repr with type t := a
+  include Template_data
   val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
-  val default_deep_config : deep_config
-
-  val pre_template_data : (template_data -> 'res) -> 'res template_data_fun
-  val apply_template_data_fun : 'res template_data_fun -> 'res
-
   val opt_component_configs_fun : (deep_config -> 'arg -> 'res) ->
     ('arg, 'res) opt_component_configs_fun
+  val default_deep_config : deep_config
   val default_template : (a, param_names, template_data) Template.t
   val component_names : string list
 end
 
 module type Pre_form = sig
   include Base_options
-  val template_data : template_data template_data_fun
-  type config = (a, param_names, deep_config, template_data) Config.t
-  val pre_render : bool -> button_content option -> param_names or_display -> config -> form_content
+  val pre_render : bool -> button_content option -> param_names or_display ->
+    (a, param_names, deep_config, template_data) Config.t -> form_content
 end
 
 module type Form = sig
   include Pre_form
+  type config = (a, param_names, deep_config, template_data) Config.t
+  val template_data : template_data template_data_fun
   val content :
     ?submit:button_content ->
     ( a, param_names, deep_config, template_data, unit,
@@ -311,6 +316,7 @@ module type Form = sig
   val post_handler : ('get -> a -> 'res) -> ('get -> repr -> 'res)
 end
 
+(******************************************************************************)
 
 module type Field = sig
   include Pre_form
@@ -319,7 +325,8 @@ module type Field = sig
   type enclosing_deep_config
   val project_default : enclosing_a -> a option
   val project_param_names : enclosing_param_names -> param_names
-  val project_config : enclosing_deep_config -> config option
+  val project_config : enclosing_deep_config ->
+    (a, param_names, deep_config, template_data) Config.t option
 end
 
 type ('a, 'param_names, 'deep_config) field =
@@ -328,6 +335,12 @@ type ('a, 'param_names, 'deep_config) field =
     type enclosing_param_names = 'param_names and
     type enclosing_deep_config = 'deep_config)
 
+module type Record_options = sig
+  include Base_options
+  val fields : (a, param_names, deep_config) field list
+end
+
+(******************************************************************************)
 
 type selector_param_name = [`One of string] Eliom_parameter.param_name
 
@@ -342,40 +355,33 @@ type ('a, 'param_names, 'deep_config) variant =
     type enclosing_param_names = 'param_names and
     type enclosing_deep_config = 'deep_config)
 
-module type Record_options = sig
-  include Base_options
-  val fields : (a, param_names, deep_config) field list
-end
-
 module type Sum_options = sig
   include Base_options
   val variants : (a, param_names, deep_config) variant list
   val project_selector_param_name : param_names -> selector_param_name
 end
 
+(******************************************************************************)
+
 module Make_base (Options : Base_options) = struct
-
   include Options
-
   let template_data = pre_template_data identity
-
   type config = (a, param_names, deep_config, template_data) Config.t
-
   let full_config_fun k f =
     Config.local_fun
       (fun local () ->
         Options.opt_component_configs_fun
           (fun deep deep_arg ->
             k (f deep_arg) { Config.local ; deep }))
-
   let get_handler f =
     fun repr post ->
       f (of_repr repr) post
   let post_handler f =
     fun get repr ->
       f get (of_repr repr)
-
 end
+
+(******************************************************************************)
 
 type variant_selection = [`Drop_down | `Radio]
 let default_variant_selection : variant_selection = `Drop_down
@@ -393,12 +399,14 @@ module Make_sum
         type param_names = Options.param_names and
         type deep_config = Options.deep_config and
         type template_data = Options.template_data sum_template_data and
-        type 'res template_data_fun = ('res Options.template_data_fun) sum_template_data_fun and
+        type 'res template_data_fun =
+          ('res Options.template_data_fun) sum_template_data_fun and
         type config =
-                 ( Options.a, Options.param_names, Options.deep_config,
-                   variant_selection * Options.template_data
-                 ) Config.t and
-        type ('arg, 'res) opt_component_configs_fun = ('arg, 'res) Options.opt_component_configs_fun
+          ( Options.a, Options.param_names, Options.deep_config,
+            variant_selection * Options.template_data
+          ) Config.t and
+        type ('arg, 'res) opt_component_configs_fun =
+          ('arg, 'res) Options.opt_component_configs_fun
 = functor (Options : Sum_options) -> struct
 
   let import_template_arguments :
@@ -416,13 +424,15 @@ module Make_sum
       (_, _, Options.template_data sum_template_data) Template.arguments ->
       variant_selection * (_, _, Options.template_data) Template.arguments =
     fun { Template.is_outmost; submit; label; annotation; default;
-          classes; template_data = (variant_selection, template_data); param_names; component_renderings } ->
+          classes; template_data = (variant_selection, template_data);
+          param_names; component_renderings } ->
       variant_selection,
       { Template.is_outmost; submit; label; annotation; default;
         classes; param_names; component_renderings; template_data }
 
   type template_data' = Options.template_data sum_template_data
-  type 'res template_data_fun' = ('res Options.template_data_fun) sum_template_data_fun
+  type 'res template_data_fun' =
+    ('res Options.template_data_fun) sum_template_data_fun
   module Options' : module type of Options with
                       type template_data = template_data' and
                       type 'res template_data_fun = 'res template_data_fun' and
@@ -451,7 +461,7 @@ module Make_sum
         Options.pre_template_data (fun data -> k (variant_selection, data))
     let apply_template_data_fun (f : _ template_data_fun) =
         Options.apply_template_data_fun (f ())
-    let default_template : (a, param_names, Options.template_data sum_template_data) Template.t =
+    let default_template =
       fun arguments ->
         Options.default_template
           (snd (export_template_arguments arguments))
@@ -482,8 +492,10 @@ module Make_sum
                           type enclosing_param_names = param_names and
                           type enclosing_deep_config = deep_config)
                       ->
-                        let selected = option_get_map ~default:false ~f:Variant.is_constructor
-                          local.Config.default in
+                        let selected =
+                          option_get_map ~default:false ~f:Variant.is_constructor
+                            local.Config.default
+                        in
                         let label = pcdata (default_label_of_component_name variant_name) in
                         Option ([], variant_name, Some label, selected))
                       Options.component_names Options.variants
@@ -498,10 +510,11 @@ module Make_sum
                       | Some default ->
                         fst
                           (List.find
-                             (fun (variant_name, (module Variant : Variant with
-                                                    type enclosing_a = a and
-                                                    type enclosing_param_names = param_names and
-                                                    type enclosing_deep_config = deep_config))
+                             (fun (variant_name,
+                                   (module Variant : Variant with
+                                      type enclosing_a = a and
+                                      type enclosing_param_names = param_names and
+                                      type enclosing_deep_config = deep_config))
                               -> Variant.is_constructor default)
                              (List.combine Options.component_names Options.variants))
                   in
@@ -530,7 +543,9 @@ module Make_sum
              let default_local =
                let label = Some [pcdata (default_label_of_component_name variant_name)] in
                let default = option_bind Variant.project_default local.Config.default in
-               let template_data = Some (Variant.apply_template_data_fun Variant.template_data) in
+               let template_data =
+                 Some (Variant.apply_template_data_fun (Variant.pre_template_data identity))
+               in
                { Config.label ; default ; template = None ; annotation = None ; template_data }
              in
              Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
@@ -573,11 +588,19 @@ module Make_sum
 
   let pre_render is_outmost submit param_names config =
     let { Config.label ; annotation ; default ; template ; template_data = template_data_opt } = config.Config.local in
-    let variant_selection, template_data = option_get' ~default:(fun () -> apply_template_data_fun template_data) template_data_opt in
-    let template = option_get_map ~default:Options.default_template ~f:(fun tmpl -> fun arguments -> tmpl (import_template_arguments ~variant_selection arguments)) template in
+    let variant_selection, template_data =
+      option_get' ~default:(fun () -> apply_template_data_fun template_data) template_data_opt
+    in
+    let template =
+      let f tmpl arguments =
+        tmpl (import_template_arguments ~variant_selection arguments)
+      in
+      option_get_map ~default:Options.default_template ~f template
+    in
+    let component_renderings = variant_renderings submit param_names config variant_selection in
     template { Template.
-               is_outmost; submit; label; annotation; default; param_names; template_data; classes = None;
-               component_renderings = variant_renderings submit param_names config variant_selection }
+               is_outmost; submit; label; annotation; default; param_names;
+               template_data; classes = None; component_renderings  }
 
   let content ?submit =
     full_config_fun (pre_render true submit)
@@ -586,6 +609,8 @@ module Make_sum
   let display =
     full_config_fun (pre_render true None) (fun () -> `Display)
 end
+
+(******************************************************************************)
 
 module Make_record :
   functor (Options : Record_options) ->
@@ -599,7 +624,8 @@ module Make_record :
       type config =
         ( Options.a, Options.param_names, Options.deep_config, Options.template_data
         ) Config.t and
-      type ('arg, 'res) opt_component_configs_fun = ('arg, 'res) Options.opt_component_configs_fun
+      type ('arg, 'res) opt_component_configs_fun =
+        ('arg, 'res) Options.opt_component_configs_fun
 =
   functor (Options : Record_options) -> struct
 
@@ -622,7 +648,7 @@ module Make_record :
               let default_local =
                 let label = Some [pcdata (default_label_of_component_name field_name)] in
                 let default = option_bind Field.project_default local.Config.default in
-                let template_data = Some (Field.apply_template_data_fun Field.template_data) in
+                let template_data = Some (Field.apply_template_data_fun (Field.pre_template_data identity)) in
                 { Config.label ; default ; template = None ; annotation = None ; template_data }
               in
               Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
@@ -664,21 +690,23 @@ module Make_record :
       full_config_fun (pre_render true None) (fun () -> `Display)
   end
 
-module Template_data_unit = struct
+(******************************************************************************)
+
+module Template_data_unit :
+  Template_data with
+    type template_data = unit and
+    type 'res template_data_fun = 'res =
+struct
   type template_data = unit
-  type 'res template_data_fun = unit -> 'res
-  let apply_template_data_fun (f : _ template_data_fun) = f ()
-  let pre_template_data k () = k ()
-  let default_template_data ?default () = None
+  type 'res template_data_fun = 'res
+  let apply_template_data_fun (f : _ template_data_fun) = f
+  let pre_template_data k = k ()
 end
 
 module type Atomic_options = sig
   type a
   type param_names
-  type template_data
-  type 'res template_data_fun
-  val apply_template_data_fun : 'res template_data_fun -> 'res
-  val pre_template_data : (template_data -> 'res) -> 'res template_data_fun
+  include Template_data
   val default_template : (a, param_names, template_data) Template.t
   val params_type : string -> (a, [`WithoutSuffix], param_names) Eliom_parameter.params_type
 end
@@ -736,7 +764,6 @@ module Form_string = struct
     type 'res template_data_fun = ?required_pattern:string -> unit -> 'res
     let pre_template_data k ?required_pattern () = k required_pattern
     let apply_template_data_fun (f : _ template_data_fun) = f ()
-    let default_template_data ?default () = None
     let params_type = Eliom_parameter.string
     let default_template = form_string_default_template false
   end
@@ -752,7 +779,6 @@ module Form_int = struct
         type param_names = [`One of int] Eliom_parameter.param_name
         let params_type = Eliom_parameter.int
         include Template_data_unit
-        let default_template_data ?default () = None
         let default_template =
           Template.template
             (fun ~is_outmost ?submit ?label ?annotation ?default
@@ -782,7 +808,6 @@ module Form_int64 = struct
         type 'res template_data_fun = ?from_list:(int64 * pcdata * bool) list -> unit -> 'res
         let pre_template_data k ?from_list () = k from_list
         let apply_template_data_fun (f : _ template_data_fun) = f ()
-        let default_template_data ?default () = None
         let default_template =
           Template.template
             (fun ~is_outmost ?submit ?label ?annotation ?default
@@ -827,7 +852,6 @@ module Form_unit = struct
         type a = unit
         type param_names = unit
         include Template_data_unit
-        let default_template_data ?default () = None
         let params_type _ = Eliom_parameter.unit
         let default_template config =
           assert (config.Template.component_renderings = []);
@@ -835,6 +859,8 @@ module Form_unit = struct
        end)
   include Make_record (Options)
 end
+
+(******************************************************************************)
 
 }}
 
@@ -1115,7 +1141,6 @@ module Form_option = struct
                method annotation = annotation
              end)
 
-        let default_template_data ?default () = None
         let params_type prefix =
           Eliom_parameter.prod
             (Eliom_parameter.bool (prefix^"_is_some"))
