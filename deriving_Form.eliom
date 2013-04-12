@@ -18,10 +18,12 @@ let failwith fmt =
 
 type div_content = Html5_types.div_content Eliom_content.Html5.elt list
 type form_content = Html5_types.form_content Eliom_content_core.Html5.elt list
+type form_elt = Html5_types.form_content Eliom_content_core.Html5.elt
 type button_content = Html5_types.button_content Eliom_content_core.Html5.elt list
 type flow5 = Html5_types.flow5 Eliom_content_core.Html5.elt list
 type pcdata = Html5_types.pcdata Eliom_content_core.Html5.elt
 let pcdata = Eliom_content.Html5.F.pcdata
+let ksprintf = Printf.ksprintf
 
 let option_get ~default = function
   | Some x -> x
@@ -48,6 +50,8 @@ let maybe_get_option_map really opt f =
     option_get ~default:[] (option_map f opt)
   else []
 let some x = Some x
+let is_some = function Some _ -> true | _ -> false
+let from_some = function Some x -> x | _ -> failwith "from_some"
 let rec option_or = function
   | [] -> None
   | None :: rest -> option_or rest
@@ -58,6 +62,7 @@ let list_filter_some li =
 
 let identity x = x
 let (%) f g x = f (g x)
+let (@@) f x = f x
 
 module String_map = struct
   include Map.Make (String)
@@ -87,6 +92,9 @@ end
 
 let form_class = "__eliom_form"
 let form_sum_class = "__eliom_form_sum"
+let form_sum_variant_class = "__eliom_form_sum_variant"
+let form_sum_radio_variant_selector_class = "__eliom_form_sum_variant_selector"
+let form_sum_dropdown_variant_selector_class = "__eliom_form_sum_variant_selector"
 let form_sum_radio_class = "__eliom_form_sum_radio"
 let form_sum_dropdown_class = "__eliom_form_sum_dropdown"
 let form_record_class = "__eliom_form_record"
@@ -95,13 +103,21 @@ let form_option_checkbox_class = "__eliom_form_option_checkbox"
 let component_not_required_class = "__eliom_form_component_not_required"
 let input_marker_class = "__eliom_form_input_marker"
 
+let form_sum_variant_attribute =
+  Eliom_content.Html5.Custom_data.create
+    ~name:"__eliom_form_sum_variant"
+    ~to_string:identity ~of_string:identity ()
+
 module Component_rendering = struct
   type t = {
     label : form_content option;
     selector : form_content option;
     content : form_content;
     annotation : form_content option;
+    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
   }
+  let mk ?label ?selector ?annotation ?a ~content () =
+    { label ; selector ; annotation ; a ; content }
 end
 
 type 'param_names or_display = [ `Display | `Param_names of 'param_names ]
@@ -114,7 +130,7 @@ module Template = struct
     label : form_content option ;
     annotation : form_content option ;
     default : 'a option ;
-    classes : string list option ;
+    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
     template_data : 'template_data ;
     param_names : 'param_names or_display ;
     component_renderings : Component_rendering.t list ;
@@ -124,15 +140,15 @@ module Template = struct
     ('a, 'param_names, 'template_data) arguments -> form_content
 
   let arguments
-      ~is_outmost ?submit ?label ?annotation ?default ?classes
+      ~is_outmost ?submit ?label ?annotation ?default ?a
       ~template_data ~param_names component_renderings =
-    { is_outmost ; submit ; label ; annotation ; default ; classes ;
+    { is_outmost ; submit ; label ; annotation ; default ; a ;
       template_data ; param_names ; component_renderings }
 
   let template f =
-    fun { is_outmost ; submit ; label ; annotation ; default ; classes ;
+    fun { is_outmost ; submit ; label ; annotation ; default ; a ;
           template_data ; param_names ; component_renderings } ->
-      f ~is_outmost ?submit ?label ?annotation ?default ?classes
+      f ~is_outmost ?submit ?label ?annotation ?default ?a
         ~template_data ~param_names component_renderings
 end
 
@@ -140,12 +156,12 @@ let template_concat : (_, _, _) Template.t =
   fun arguments ->
     Template.template
       (let open Eliom_content.Html5.F in
-       fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ~template_data
+       fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[]) ~template_data
          ~param_names component_renderings ->
-           [ div ~a:[a_class (form_class :: classes)]
+           [ div ~a:(a_class [form_class] :: a)
                (List.map
-                  (fun { Component_rendering.label ; selector ; content ; annotation } ->
-                    div [
+                  (fun { Component_rendering.label ; selector ; content ; annotation ; a } ->
+                    div ?a [
                       div (option_get ~default:[] selector) ;
                       div (option_get ~default:[] label) ;
                       div content ;
@@ -158,61 +174,67 @@ let template_table =
   fun arguments ->
     Template.template
       (let open Eliom_content.Html5.F in
-       fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[]) ~template_data
-    ~param_names field_renderings ->
-      let captions =
-        maybe_get_option_map is_outmost label
-          (fun label ->
-            [tr ~a:[a_class ["field"]]
-                [td ~a:[a_class ["form_label"]; a_colspan 3] label]])
-      in
-      let annotations =
-        maybe_get_option_map is_outmost annotation
-          (fun annotation ->
-            [tr ~a:[a_class ["field"]]
-                [td ~a:[a_class ["form_annotation"]; a_colspan 3] annotation]])
-      in
-      let submits =
-        maybe_get_option_map is_outmost submit
-          (fun submit ->
-            [tr ~a:[a_class ["field"]]
-                [td [];
-                 td ~a:[a_class ["form_submit"]; a_colspan 3]
-                   [button ~button_type:`Submit submit];
-                 td []]])
-      in
-      let fields =
-        List.map
-          (fun { Component_rendering.label ; selector ; content ; annotation } ->
-            let label =
-              td ~a:[a_class ["label"]]
-                (option_get ~default:[] label)
-            in
-            let selector =
-              option_to_list
-                (option_map
-                   (td ~a:[a_class ["selector"]])
-                   selector)
-            in
-            let content =
-              td ~a:[a_class ["content"]] content
-            in
-            let annotation =
-              option_to_list
-                (option_map
-                   (td ~a:[a_class ["annotation"]])
-                   annotation)
-            in
-            tr ~a:[a_class ["field"]]
-              (selector @ label :: content :: annotation))
-          field_renderings
-      in
-      let contents = captions @ fields @ annotations @ submits in
-      let outmost_class = if is_outmost then ["outmost"] else [] in
-      match contents with
-      | [] -> []
-      | hd :: tl ->
-             [ table ~a:[a_class ("form" :: form_class :: outmost_class @ classes)]
+       fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[]) ~template_data
+         ~param_names field_renderings ->
+           let captions =
+             maybe_get_option_map is_outmost label
+               (fun label ->
+                 [tr ~a:[a_class ["field"]]
+                     [td ~a:[a_class ["form_label"]; a_colspan 3] label]])
+           in
+           let annotations =
+             maybe_get_option_map is_outmost annotation
+               (fun annotation ->
+                 [tr ~a:[a_class ["field"]]
+                     [td ~a:[a_class ["form_annotation"]; a_colspan 3] annotation]])
+           in
+           let submits =
+             maybe_get_option_map is_outmost submit
+               (fun submit ->
+                 [tr ~a:[a_class ["field"]]
+                     [td [];
+                      td ~a:[a_class ["form_submit"]; a_colspan 3]
+                        [button ~button_type:`Submit submit];
+                      td []]])
+           in
+           let fields =
+             List.map from_some @@
+             List.filter is_some @@
+             List.map
+               (fun { Component_rendering.label ; selector ; content ; annotation ; a } ->
+                 if selector = None && annotation = None && content = [] then
+                   None
+                 else
+                   let a = option_get ~default:[] a in
+                   let label =
+                     td ~a:[a_class ["label"]]
+                       (option_get ~default:[] label)
+                   in
+                   let selector =
+                     option_to_list
+                       (option_map
+                          (td ~a:[a_class ["selector"]])
+                          selector)
+                   in
+                   let content =
+                     td ~a:[a_class ["content"]] content
+                   in
+                   let annotation =
+                     option_to_list
+                       (option_map
+                          (td ~a:[a_class ["annotation"]])
+                          annotation)
+                   in
+                   Some (tr ~a:(a_class ["field"] :: a)
+                           (selector @ label :: content :: annotation)))
+               field_renderings
+           in
+           let contents = captions @ fields @ annotations @ submits in
+           let outmost_class = if is_outmost then ["outmost"] else [] in
+           match contents with
+           | [] -> []
+           | hd :: tl ->
+             [ table ~a:(a_class (["form"; form_class] @ outmost_class) :: a)
                  hd tl ])
       arguments
 
@@ -385,10 +407,183 @@ module Make_base (Options : Base_options) = struct
     fun get repr ->
       f get (of_repr repr)
 end
+}}
+
+{client{
+
+  let rec parent_with_class =
+    fun class_ element ->
+      Js.Opt.case
+        (Js.Opt.bind
+           (element ## parentNode)
+           Dom_html.CoerceTo.element)
+        (fun () ->
+          None)
+        (fun parent ->
+          if Js.to_bool (parent ## classList ## contains (Js.string class_)) then
+            Some parent
+          else
+            parent_with_class class_ parent)
+
+  let find_form_node node =
+    match parent_with_class form_class (node :> Dom_html.element Js.t) with
+      | Some form_node -> form_node
+      | None -> failwith "find_form_node"
+
+  (* let get_form_sum_variant_attribute, set_form_sum_variant_attribute, unset_form_sum_variant_attribute = *)
+  (*   let get (form_node : #Dom_html.element Js.t) = *)
+  (*     Js.Opt.case (form_node ## getAttribute (attribute)) *)
+  (*       (fun () -> None) *)
+  (*       (fun str -> Some (Js.to_string str)) *)
+  (*   in *)
+  (*   let set (form_node : #Dom_html.element Js.t) variant_name = *)
+  (*     form_node ## setAttribute (attribute, Js.string variant_name) *)
+  (*   in *)
+  (*   let unset (form_node : Dom_html.element Js.t) = *)
+  (*     form_node ## removeAttribute (attribute) *)
+  (*   in *)
+  (*   get, set, unset *)
+
+  let classify_form_node form_node =
+    let form_node = (form_node :> Dom_html.element Js.t) in
+    let contains clazz = Js.to_bool (form_node ## classList ## contains (Js.string clazz)) in
+    if not (contains form_class) then
+      failwith "classify_form_node";
+    match contains form_record_class, contains form_sum_class, contains form_option_class with
+      | true, false, false -> `Record
+      | false, true, false ->
+        begin match contains form_sum_radio_class, contains form_sum_dropdown_class with
+          (* | true, false -> `Sum `Radio *)
+          | false, true -> `Sum `Drop_down
+          | _ -> failwith "classify_form_node: sum"
+        end
+      (* | false, false, true -> `Option *)
+      | _ -> failwith "classify_form_node"
+
+  let rec nodes_between ~root ~descendent =
+    Js.Opt.case (descendent ## parentNode)
+      (fun () -> failwith "nodes_between")
+      (fun parent ->
+        if parent == root then
+          []
+        else
+          parent :: nodes_between ~root ~descendent:parent)
+
+  (* let local_to_form ~form_node nodes = *)
+  (*   List.filter *)
+  (*     (fun node -> *)
+  (*       List.for_all *)
+  (*         (fun between -> note (between ## classes ## contains (form_class))) *)
+  (*         (nodes_between ~root ~descendent:node)) *)
+  (*     nodes *)
+
+  (* let form_sum_current_variant form_node radio_or_dropdow = *)
+  (*   match radio_or_dropdow with *)
+  (*     | `Radio -> *)
+  (*         let variants = *)
+  (*           let sum_variant_class_str = ksprintf Js.string ".%s" form_sum_variant_class in *)
+  (*           local_to_form ~form_node *)
+  (*             (form_node ## querySelectorAll (sum_variant_class_str)) *)
+  (*         in *)
+  (*         begin match *)
+  (*           local_to_form ~form_node *)
+  (*             (form_node ## querySelectorAll (ksprintf Js.string ".%:checked" form_sum_radio_variant_selector_class)) *)
+  (*         with *)
+  (*           | [] -> None *)
+  (*           | [input_node] -> *)
+  (*             let variant_node = parent_with_class form_sum_variant_class input_node in *)
+  (*             Js.Opt.get *)
+  (*               (variant_node ## attributes ## getAttribute (Js.string form_sum_variant_attribute)) *)
+  (*               (fun () -> faiwith "form_sum_current_variant: no variant attribute") *)
+  (*           | _ -> failwith "form_sum_current_variant: multiple selected variants" *)
+  (*         end *)
+  (*     | `Drop_down -> *)
+  (*         let selector = *)
+  (*           match *)
+  (*             local_to_form ~form_node *)
+  (*               (form_node ## querySelectorAll (ksprintf Js.string ".%s" form_sum_dropdown_variant_selector_class)) *)
+  (*           with *)
+  (*             | [selector] -> selector *)
+  (*             | _ -> failwith "form_sum_current_variant: to many or no variant selectors" *)
+  (*         in *)
+  (*         if selector ## value = "" then *)
+  (*           None *)
+  (*         else Some selector ## value *)
+
+
+  let rec is_required_rec : Dom_html.element Js.t -> bool =
+    fun node ->
+      match parent_with_class form_class node with
+      | None -> true
+      | Some form_node ->
+        let locally_required =
+          match classify_form_node form_node with
+          | `Record -> true
+          | `Sum `Drop_down ->
+              if Js.to_bool (node ## classList ## contains
+                   (Js.string form_sum_dropdown_variant_selector_class)) then
+                true
+              else
+                begin
+                  try
+                    let selected_variant_name =
+                      Eliom_content.Html5.Custom_data.get_dom form_node form_sum_variant_attribute
+                    in
+                    let variant_node =
+                      option_get' ~default:(fun () -> failwith "is_required_rec: variant")
+                        (parent_with_class form_sum_variant_class node) in
+                    let variant_name =
+                      Eliom_content.Html5.Custom_data.get_dom variant_node
+                        form_sum_variant_attribute
+                    in
+                    variant_name = selected_variant_name
+                  with Not_found -> false
+                end
+        in
+        locally_required && is_required_rec form_node
+  let is_required_rec node = is_required_rec (node :> Dom_html.element Js.t)
+
+  let form_inputs_set_required form_node =
+    Firebug.console ## log_2 (Js.string "form_inputs_set_required", form_node);
+    let inputs =
+      form_node ## querySelectorAll
+        (Printf.ksprintf Js.string
+           "input:not([type='checkbox']):not(.%s),\
+            select:not(.%s)"
+           component_not_required_class
+           component_not_required_class)
+    in
+    List.iter
+      (fun node ->
+        Js.Opt.iter
+          (Dom_html.CoerceTo.input node)
+          (fun input ->
+            input ## required <- Js.bool (is_required_rec input));
+        Js.Opt.iter
+          (Dom_html.CoerceTo.select node)
+          (fun select ->
+            select ## required <- Js.bool (is_required_rec select)))
+      (Dom.list_of_nodeList inputs)
+}}
+
+{shared{
+
+let for_outmost ~is_outmost = function
+  | elt :: elts when is_outmost ->
+    let id = Eliom_content.Html5.Id.new_elt_id () in
+    ignore {unit{
+      Eliom_client.onload
+      (fun () ->
+        form_inputs_set_required
+          (Eliom_content.Html5.To_dom.of_element
+             (Eliom_content.Html5.Id.get_element %id)))
+    }};
+    Eliom_content.Html5.Id.create_named_elt ~id elt :: elts
+  | elts -> elts
 
 (******************************************************************************)
 
-type variant_selection = [`Drop_down | `Radio]
+type variant_selection = [`Drop_down(* | `Radio*)]
 let default_variant_selection : variant_selection = `Drop_down
 
 type 'template_data sum_template_data =
@@ -418,19 +613,19 @@ module Make_sum
       (_, _, Options.template_data sum_template_data) Template.arguments ->
       (_, _, Options.template_data) Template.arguments =
     fun { Template.is_outmost; submit; label; annotation; default;
-          classes; template_data = (variant_selection, template_data);
+          a; template_data = (variant_selection, template_data);
           param_names; component_renderings } ->
-      let classes =
+      let a =
         let variant_selection_class =
           match variant_selection with
           | `Drop_down -> form_sum_dropdown_class
-          | `Radio -> form_sum_radio_class
+          (* | `Radio -> form_sum_radio_class *)
         in
-        Some ([form_class; form_sum_class; variant_selection_class ]
-              @ option_get ~default:[] classes)
+        let classes =[form_class; form_sum_class; variant_selection_class] in
+        Some (Eliom_content.Html5.F.a_class classes :: option_get ~default:[] a)
       in
       { Template.is_outmost; submit; label; annotation; default;
-        classes; param_names; component_renderings; template_data }
+        a; param_names; component_renderings; template_data }
 
   type template_data' = Options.template_data sum_template_data
   type 'res template_data_fun' =
@@ -471,7 +666,7 @@ module Make_sum
       { Config.local ; deep } variant_selection =
     let first =
       match variant_selection with
-        | `Radio -> []
+        (* | `Radio -> [] *)
         | `Drop_down ->
           let required_label = "Select an option" in
           let open Eliom_content.Html5.F in
@@ -492,12 +687,29 @@ module Make_sum
                             local.Config.default
                         in
                         let label = pcdata (default_label_of_component_name variant_name) in
-                        Option ([], variant_name, Some label, selected))
+                        Eliom_content.Html5.D.Option ([], variant_name, Some label, selected))
                       Options.component_names Options.variants
                   in
-                  string_select ~name
-                    ~required:(pcdata required_label)
-                    (List.hd options) (List.tl options)
+                  let select =
+                    Eliom_content.Html5.D.string_select
+                      ~a:[a_class [form_sum_dropdown_variant_selector_class]]
+                      ~name ~required:(pcdata required_label)
+                      (List.hd options) (List.tl options)
+                  in
+                  ignore {unit{
+                    Lwt_js_events.async
+                      (fun () ->
+                        let select_node = Eliom_content.Html5.To_dom.of_select %select in
+                        Lwt_js_events.changes select_node
+                          (fun _ _ ->
+                            let form_node = find_form_node (select_node :> Dom_html.element Js.t) in
+                            let variant_name = Js.to_string (select_node ## value) in
+                            Eliom_content.Html5.Custom_data.set_dom form_node
+                              form_sum_variant_attribute variant_name;
+                            form_inputs_set_required form_node;
+                            Lwt.return ()))
+                  }};
+                  div ~a:[a_class ["contains_select"]] [ select ]
               | `Display ->
                   let variant_name =
                     match local.Config.default with
@@ -515,8 +727,7 @@ module Make_sum
                   in
                   pcdata variant_name
           ] in
-          [ { Component_rendering.content ;
-              selector = None ; annotation = None ; label = None  } ]
+          [ Component_rendering.mk ~content () ]
     in
     first @
     list_filter_some
@@ -557,15 +768,28 @@ module Make_sum
            else
              let selector =
                match variant_selection with
-               | `Radio -> begin
-                 match param_names with
-                 | `Display -> None
-                 | `Param_names param_names ->
-                   let name = Options.project_selector_param_name param_names in
-                   let open Eliom_content.Html5.F in
-                   Some [  string_radio_required ~checked:is_constructor ~name
-                            ~value:variant_name () ]
-               end
+               (* | `Radio -> begin *)
+               (*   match param_names with *)
+               (*   | `Display -> None *)
+               (*   | `Param_names param_names -> *)
+               (*     let name = Options.project_selector_param_name param_names in *)
+               (*     let open Eliom_content.Html5.F in *)
+               (*     let radio = *)
+               (*       Eliom_content.Html5.D.string_radio_required *)
+               (*         ~checked:is_constructor ~name *)
+               (*         ~a:[a_class [form_sum_radio_variant_selector_class]] *)
+               (*         ~value:variant_name () *)
+               (*     in *)
+               (*     ignore {unit{ *)
+               (*       Lwt_js_events.async *)
+               (*         (fun () -> *)
+               (*           let radio_node = Eliom_content.Html5.To_dom.of_input %radio in *)
+               (*           let form_node = find_form_node radio_node in *)
+               (*           set_form_sum_variant_attribute form_node %variant_name; *)
+               (*           Lwt.return ()) *)
+               (*     }}; *)
+               (*     Some [ radio ] *)
+               (* end *)
                | `Drop_down -> None
              in
              let content =
@@ -576,9 +800,14 @@ module Make_sum
                in
                Variant.pre_render false submit param_names config
              in
-             Some { Component_rendering.content; selector ;
-                    label = Config.(config.local.label) ;
-                    annotation = Config.(config.local.annotation) })
+             let a = [
+               Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
+               Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
+             ] in
+             Some (Component_rendering.mk ~a ?selector
+                     ?label:Config.(config.local.label)
+                     ?annotation:Config.(config.local.annotation)
+                     ~content ()))
          Options.component_names
          Options.variants)
 
@@ -598,9 +827,13 @@ module Make_sum
         template
     in
     let component_renderings = variant_renderings submit param_names config variant_selection in
-    template { Template.
-               is_outmost; submit; label; annotation; default; param_names;
-               template_data; classes = None; component_renderings  }
+    for_outmost ~is_outmost
+      (template
+         (Template.arguments
+            ~is_outmost ?submit ?label ?annotation ?default
+            ~param_names ~template_data component_renderings))
+
+
 
   let content ?submit : (_, _, _, _, _, _) Config.local_fun =
     Config.local_fun
@@ -675,10 +908,10 @@ module Make_record :
             in
             Field.pre_render false submit param_names config
           in
-          { Component_rendering.content ;
-            selector = None ;
-            label = Config.(config.local.label) ;
-            annotation = Config.(config.local.annotation) })
+          Component_rendering.mk
+            ?label:Config.(config.local.label)
+            ?annotation:Config.(config.local.annotation)
+            ~content ())
         Options.component_names
         Options.fields
 
@@ -693,11 +926,17 @@ module Make_record :
       let { Config.label ; annotation ; default ; template ; classes ; template_data = template_data_opt } = config.Config.local in
       let template_data = option_get' ~default:(fun () -> apply_template_data_fun template_data) template_data_opt in
       let template = option_get ~default:Options.default_template template in
-      let classes = Some ([form_class; form_record_class]
-                          @ option_get ~default:[] classes) in
-      template { Template.is_outmost; submit; label; annotation;
-                 default; param_names; template_data; classes;
-                 component_renderings = field_renderings submit param_names config }
+      let a =
+        Some [Eliom_content.Html5.F.a_class
+                (form_class :: form_record_class ::
+                   option_get ~default:[] classes)]
+      in
+      for_outmost ~is_outmost
+        (template
+           (Template.arguments
+              ~is_outmost ?submit ?label ?annotation
+              ?default ~param_names ~template_data ?a
+              (field_renderings submit param_names config)))
 
 
     let content ?submit =
@@ -759,11 +998,11 @@ let input_marker =
   Eliom_content.Html5.F.(span ~a:[a_class [input_marker_class]] [])
 
 let form_string_default_template can_be_empty =
+  let open Eliom_content.Html5.F in
   Template.template
-    (fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[])
+    (fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[])
       ~template_data:opt_pattern ~param_names component_renderings ->
       assert (component_renderings = []);
-      let open Eliom_content.Html5.F in
       let not_required_class_maybe, required_maybe =
         if can_be_empty then
           [component_not_required_class], []
@@ -776,7 +1015,8 @@ let form_string_default_template can_be_empty =
              opt_pattern)
       in
       let a =
-        a_class (not_required_class_maybe @ classes) :: required_maybe @ pattern_maybe
+        let a = (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
+        a_class not_required_class_maybe :: required_maybe @ pattern_maybe @ a
       in match param_names with
         | `Param_names param_names -> [
             string_input ~a ~name:param_names ?value:default ~input_type:`Text ();
@@ -808,19 +1048,20 @@ module Form_int = struct
         let params_type = Eliom_parameter.int
         include Template_data_unit
         let default_template =
+          let open Eliom_content.Html5.F in
           Template.template
             (fun ~is_outmost ?submit ?label ?annotation ?default
-              ?(classes=[]) ~template_data ~param_names component_renderings ->
-          assert (component_renderings = []);
-          let open Eliom_content.Html5.F in
-          match param_names with
-            | `Param_names param_names -> [
-              int_input ~a:[a_required `Required; a_class classes]
-                ~name:param_names ?value:default ~input_type:`Number ();
-              input_marker;
-            ]
-            | `Display ->
-                  [ pcdata (option_get ~default:"" (option_map string_of_int default))])
+              ?(a=[]) ~template_data ~param_names component_renderings ->
+                assert (component_renderings = []);
+                let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
+                match param_names with
+                  | `Param_names param_names -> [
+                    int_input ~a:(a_required `Required :: a)
+                      ~name:param_names ?value:default ~input_type:`Number ();
+                    input_marker;
+                  ]
+                  | `Display ->
+                    [ pcdata (option_get ~default:"" (option_map string_of_int default))])
        end)
   include Make_record (Options)
 end
@@ -837,35 +1078,37 @@ module Form_int64 = struct
         let pre_template_data k ?from_list () = k from_list
         let apply_template_data_fun (f : _ template_data_fun) = f ()
         let default_template =
+          let open Eliom_content.Html5.F in
           Template.template
             (fun ~is_outmost ?submit ?label ?annotation ?default
-              ?(classes=[]) ~template_data:values_opt ~param_names component_renderings ->
+              ?(a=[]) ~template_data:values_opt ~param_names component_renderings ->
           assert (component_renderings = []);
-          let open Eliom_content.Html5.F in
           let required_label = "please select" in
           match param_names with
           | `Param_names param_names -> begin
             match values_opt with
-            | None -> [
-              int64_input ~a:[a_required `Required; a_class classes]
-                ~name:param_names ?value:default ~input_type:`Number ();
-              input_marker;
-            ]
+            | None ->
+              let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in [
+                int64_input ~a:(a_required `Required :: a)
+                  ~name:param_names ?value:default ~input_type:`Number ();
+                input_marker;
+              ]
             | Some values when values <> [] ->
+              let a = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
               let options =
                 List.map
                   (function i, label, selected ->
                     Option ([], i, Some label, selected))
                   values
               in [
-                int64_select ~a:[a_class classes] ~required:(pcdata required_label)
+                int64_select ~a ~required:(pcdata required_label)
                   ~name:param_names (List.hd options) (List.tl options);
                 input_marker;
               ]
             | Some values ->
+              let a' = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
               let open Eliom_content.Html5.F.Raw in
-              [ select
-                  ~a:[a_class classes; a_required `Required]
+              [ select ~a:(a_required `Required :: a')
                   [option ~a:[a_value ""] (pcdata required_label)] ]
           end
                 | `Display -> [pcdata (option_get ~default:"" (option_map Int64.to_string default))])
@@ -963,27 +1206,13 @@ end
 }}
 
 {client{
-  let rec parent_with_class =
-    fun class_ element ->
-      Js.Opt.case
-        (Js.Opt.bind
-           (element ## parentNode)
-           Dom_html.CoerceTo.element)
-        (fun () ->
-          None)
-        (fun parent ->
-          if Js.to_bool (parent ## classList ## contains (Js.string class_)) then
-            Some parent
-          else
-            parent_with_class class_ parent)
 
   let is_option_checked form =
     let checkbox =
       Js.Opt.get
         (Js.Opt.bind
            (form ## querySelector
-              (Printf.ksprintf
-                 (fun x -> Eliom_lib.debug "QUERY: %S" x; Js.string x)
+              (Printf.ksprintf Js.string
                  " .field:nth-child(1) .%s"
                  form_option_checkbox_class))
            Dom_html.CoerceTo.input)
@@ -1000,7 +1229,6 @@ end
 
   let rec set_checked =
     fun form ->
-      Firebug.console ## log_2 (Js.string "set_checked", form);
       try
       let inputs =
         form ## querySelectorAll
@@ -1031,7 +1259,93 @@ end
           (Printexc.to_string exc)
 }}
 
+{shared{
 module Form_option = struct
+  module Make (Form : Form) = struct
+    module Options = struct
+      type a = Form.a option
+      module Component_None = Form_unit
+      module Component_Some = Form
+      type param_names =
+        [`One of string] Eliom_parameter.param_name *
+          (Component_None.param_names * Component_Some.param_names)
+      type deep_config = Component_None.config option * Component_Some.config option
+      let default_deep_config = None, None
+      include Template_data_unit
+      type repr = string * (Component_None.repr option * Component_Some.repr option)
+      let component_names = [ "None" ; "Some" ]
+      let of_repr = function
+        | ("None", (Some _, _)) -> None
+        | ("Some", (_, Some component)) ->
+            Some (Component_Some.of_repr component)
+        | _ -> failwith "Form_option: of_repr"
+      let to_repr =
+        function
+        | None -> ("None", ((Some (Component_None.to_repr ())), None))
+        | Some component ->
+          ("Some", (None, (Some (Component_Some.to_repr component))))
+      let params_type prefix =
+        Eliom_parameter.prod
+          (Eliom_parameter.string (prefix ^ "_constructor"))
+          (Eliom_parameter.prod
+             (Eliom_parameter.opt
+                (Component_None.params_type (prefix ^ ("_" ^ "None"))))
+             (Eliom_parameter.opt
+                (Component_Some.params_type (prefix ^ ("_" ^ "Some")))))
+      type ('arg, 'res) opt_component_configs_fun =
+        ?none: Component_None.config ->
+        ?some: Component_Some.config -> 'arg -> 'res
+      let opt_component_configs_fun k ?none ?some arg = k (none, some) arg
+      let default_template = default_template
+      let variants : ((a, param_names, deep_config) variant) list =
+        let project_None (none, some) = none
+        and project_Some (none, some) = some
+        in
+        let module Component_None = struct
+          type enclosing_a = a
+          type enclosing_param_names = param_names
+          type enclosing_deep_config = deep_config
+          let project_default =
+            function | None -> Some () | Some _ -> None
+          let _ = project_default
+          let project_param_names param_names =
+            project_None (snd param_names)
+          let _ = project_param_names
+          let project_config = project_None
+          let _ = project_config
+          let is_constructor =
+            function | None -> true | Some _ -> false
+          let _ = is_constructor
+          include Component_None
+        end in
+        let module Component_Some = struct
+          type enclosing_a = a
+          type enclosing_param_names = param_names
+          type enclosing_deep_config = deep_config
+          let project_default =
+            function
+            | None -> None
+            | Some component -> Some component
+          let _ = project_default
+          let project_param_names param_names =
+            project_Some (snd param_names)
+          let _ = project_param_names
+          let project_config = project_Some
+          let _ = project_config
+          let is_constructor =
+            function | None -> false | Some _ -> true
+          let _ = is_constructor
+          include Component_Some
+        end in
+        [ (module Component_None); (module Component_Some) ]
+      let project_selector_param_name = fst
+    end
+    include Make_sum (Options)
+  end
+end
+}}
+
+module Form_option' = struct
 
   type ('a, 'template_data) option_template_data =
     < template : ('a, unit, 'template_data) Template.t ;
@@ -1074,7 +1388,7 @@ module Form_option = struct
     =
     fun the_template_data the_template ->
       Template.template
-        (fun ~is_outmost ?submit ?label ?annotation ?default ?(classes=[])
+        (fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[])
           ~(template_data : (_, _) option_template_data)
           (* ?(template_data=template_data ()) *) ~param_names field_renderings ->
             let checkbox_param_name, param_names, local_param_names =
@@ -1124,12 +1438,12 @@ module Form_option = struct
                  ~is_outmost:false ?submit ?default ~param_names
                  ~template_data:the_template_data field_renderings)
           in
-          { Component_rendering.label ; selector ; annotation ; content } in
-        let classes = form_option_class :: classes in
+          Component_rendering.mk ?label ?selector ?annotation ~content () in
+        let a = Eliom_content.Html5.F.a_class [form_option_class] :: a in
         let default = option_get ~default:None default in
         template_data#template
           (Template.arguments ~is_outmost ?submit ?label
-             ?annotation:template_data#annotation ?default ~classes
+             ?annotation:template_data#annotation ?default ~a
              ~template_data:template_data#template_data
              ~param_names:local_param_names [field_rendering]))
 

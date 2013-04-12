@@ -127,8 +127,7 @@ module Builder (Loc : Defs.Loc) = struct
           | [type_param_qname] ->
             let make_module_qname = append "Make" module_qname in
             let options_module_qname =
-              append "Options"
-                (map_last form_module_name type_param_qname)
+              map_last form_module_name type_param_qname
             in
             <:module_expr<
               $id:ident_of_qname make_module_qname$
