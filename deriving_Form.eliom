@@ -442,20 +442,6 @@ end
       | Some form_node -> form_node
       | None -> failwith "find_form_node"
 
-  (* let get_form_sum_variant_attribute, set_form_sum_variant_attribute, unset_form_sum_variant_attribute = *)
-  (*   let get (form_node : #Dom_html.element Js.t) = *)
-  (*     Js.Opt.case (form_node ## getAttribute (attribute)) *)
-  (*       (fun () -> None) *)
-  (*       (fun str -> Some (Js.to_string str)) *)
-  (*   in *)
-  (*   let set (form_node : #Dom_html.element Js.t) variant_name = *)
-  (*     form_node ## setAttribute (attribute, Js.string variant_name) *)
-  (*   in *)
-  (*   let unset (form_node : Dom_html.element Js.t) = *)
-  (*     form_node ## removeAttribute (attribute) *)
-  (*   in *)
-  (*   get, set, unset *)
-
   let classify_form_node form_node =
     let form_node = (form_node :> Dom_html.element Js.t) in
     let contains clazz = Js.to_bool (form_node ## classList ## contains (Js.string clazz)) in
@@ -465,11 +451,9 @@ end
       | true, false, false -> `Record
       | false, true, false ->
         begin match contains form_sum_radio_class, contains form_sum_dropdown_class with
-          (* | true, false -> `Sum `Radio *)
           | false, true -> `Sum `Drop_down
           | _ -> failwith "classify_form_node: sum"
         end
-      (* | false, false, true -> `Option *)
       | _ -> failwith "classify_form_node"
 
   let rec nodes_between ~root ~descendent =
@@ -480,48 +464,6 @@ end
           []
         else
           parent :: nodes_between ~root ~descendent:parent)
-
-  (* let local_to_form ~form_node nodes = *)
-  (*   List.filter *)
-  (*     (fun node -> *)
-  (*       List.for_all *)
-  (*         (fun between -> note (between ## classes ## contains (form_class))) *)
-  (*         (nodes_between ~root ~descendent:node)) *)
-  (*     nodes *)
-
-  (* let form_sum_current_variant form_node radio_or_dropdow = *)
-  (*   match radio_or_dropdow with *)
-  (*     | `Radio -> *)
-  (*         let variants = *)
-  (*           let sum_variant_class_str = ksprintf Js.string ".%s" form_sum_variant_class in *)
-  (*           local_to_form ~form_node *)
-  (*             (form_node ## querySelectorAll (sum_variant_class_str)) *)
-  (*         in *)
-  (*         begin match *)
-  (*           local_to_form ~form_node *)
-  (*             (form_node ## querySelectorAll (ksprintf Js.string ".%:checked" form_sum_radio_variant_selector_class)) *)
-  (*         with *)
-  (*           | [] -> None *)
-  (*           | [input_node] -> *)
-  (*             let variant_node = parent_with_class form_sum_variant_class input_node in *)
-  (*             Js.Opt.get *)
-  (*               (variant_node ## attributes ## getAttribute (Js.string form_sum_variant_attribute)) *)
-  (*               (fun () -> faiwith "form_sum_current_variant: no variant attribute") *)
-  (*           | _ -> failwith "form_sum_current_variant: multiple selected variants" *)
-  (*         end *)
-  (*     | `Drop_down -> *)
-  (*         let selector = *)
-  (*           match *)
-  (*             local_to_form ~form_node *)
-  (*               (form_node ## querySelectorAll (ksprintf Js.string ".%s" form_sum_dropdown_variant_selector_class)) *)
-  (*           with *)
-  (*             | [selector] -> selector *)
-  (*             | _ -> failwith "form_sum_current_variant: to many or no variant selectors" *)
-  (*         in *)
-  (*         if selector ## value = "" then *)
-  (*           None *)
-  (*         else Some selector ## value *)
-
 
   let rec is_required_rec : Dom_html.element Js.t -> bool =
     fun node ->
@@ -642,7 +584,6 @@ module Make_sum
         let variant_selection_class =
           match variant_selection with
           | `Drop_down -> form_sum_dropdown_class
-          (* | `Radio -> form_sum_radio_class *)
         in
         let classes =[form_class; form_sum_class; variant_selection_class] in
         Some (Eliom_content.Html5.F.a_class classes :: option_get ~default:[] a)
@@ -1139,76 +1080,6 @@ end
 
 }}
 
-
-(* module Form_list = struct *)
-(*   module Make *)
-(*   : functor (Options : Options with type param_names = string Eliom_parameter.setone Eliom_parameter.param_name) -> Form *)
-(*   = functor (Options : Options with type param_names = string Eliom_parameter.setone Eliom_parameter.param_name) -> struct *)
-(*       module Options = struct *)
-(*         type a = Options.a list *)
-(*         type repr = Options.repr list *)
-(*         type param_names = [`Set of string] Eliom_parameter.param_name *)
-(*         let params_type prefix : (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type = *)
-(*           Eliom_parameter.set (Options.params_type : string -> (_, _, string Eliom_parameter.setone) Eliom_parameter.params_type :> string -> (_, _, [`One of string]) Eliom_parameter.params_type) prefix *)
-(*         type deep_config = (Options.a, Options.param_names, Options.deep_config) Config.t option *)
-(*         let default_deep_config = None *)
-(*         let to_repr = List.map Options.to_repr *)
-(*         let of_repr = List.map Options.of_repr *)
-(*         type ('arg, 'res) opt_component_configs_fun = *)
-(*             deep_config -> 'arg -> 'res *)
-(*         let opt_component_configs_fun f = f *)
-(*         let component_names = [] *)
-(*         let components = [] *)
-(*         module Component = Make (struct *)
-(*           include (Options : module type of Options with type param_names := Options.param_names) *)
-(*           type param_names = [`Set of string] Eliom_parameter.param_name *)
-(*           let params_type prefix : (repr, _, param_names) Eliom_parameter.params_type = *)
-(*             failwith "Form_list.Component.params_type" *)
-(*           let components = [] *)
-(*           let default_template = [] *)
-(*             (\* List.map *\) *)
-(*             (\*   (fun (module Component : Component with type a =  *\) *)
-(*             (\*   (fun (component : (a, Options.param_names, deep_config) component) -> *\) *)
-(*             (\*     let module Component = (val component) in *\) *)
-(*             (\*     let module Component = struct *\) *)
-(*             (\*       include (Component : module type of Component with type enclosing_param_names := Component.enclosing_param_names) *\) *)
-(*             (\*       type enclosing_param_names = [`Set of string] Eliom_parameter.param_name *\) *)
-(*             (\*       let project_param_names x = x *\) *)
-(*             (\*     end in *\) *)
-(*             (\*     ((module Component) : (a, param_names, deep_config) component)) *\) *)
-(*             (\*   Options.components *\) *)
-(*         end) *)
-(*         let default_template : (a, param_names) template = *)
-(*           let open Eliom_content.Html5.F in *)
-(*           fun ~is_outmost ?submit ?label ?annotation ?default ~param_names component_renderings -> *)
-(*             assert (component_renderings = []); *)
-(*             let component_renderings = *)
-(*               let components = *)
-(*                 match default with *)
-(*                   | Some values -> List.map (fun x -> Some x) values *)
-(*                   | None -> Array.to_list (Array.make 5 None) *)
-(*               in *)
-(*               List.map *)
-(*                 (fun default -> *)
-(*                   let label = None in *)
-(*                   let annotation = None in *)
-(*                   let template = None in *)
-(*                   let local = { Config.label ; annotation ; default ; template } in *)
-(*                   let deep = Options.default_deep_config in *)
-(*                   let config = { Config.local ; deep } in *)
-(*                   let content = Component.pre_render false submit param_names config in *)
-(*                   { Component_rendering.label; content; annotation }) *)
-(*                 components *)
-(*             in *)
-(*             template_table ~is_outmost ~param_names ?submit component_renderings *)
-(*       end *)
-(*       include Make (Options) *)
-(*   end *)
-(* end *)
-
-{shared{
-}}
-
 {client{
 
   let is_option_checked form =
@@ -1645,252 +1516,6 @@ module Form_list = struct
     end
 end
 }}
-
-(*
-module Form_option' = struct
-
-  type ('a, 'template_data) option_template_data =
-    < template : ('a, unit, 'template_data) Template.t ;
-      template_data : 'template_data ;
-      label : form_content option ;
-      annotation : form_content option >
-
-  type 'param_names option_param_names =
-    [`One of bool] Eliom_parameter.param_name * 'param_names
-
-  let component : 'a 'param_names 'deep_config 'template_data .
-      ( 'a option,
-        'param_names option_param_names,
-        ('a, 'param_names, 'deep_config, 'template_data) Config.t option,
-        ('a, 'template_data) option_template_data,
-        ('a, 'param_names, 'deep_config, 'template_data) Config.t,
-        ( 'a option,
-          'param_names option_param_names,
-          ('a, 'param_names, 'deep_config, 'template_data) Config.t option,
-          ('a, 'template_data) option_template_data
-        ) Config.t
-      ) Config.local_fun
-      =
-    fun ?label ?annotation ?default ?classes ?template ?template_data arg ->
-      Config.local_fun
-        (fun local deep ->
-          { Config.local ; deep = Some deep })
-        ?label ?annotation ?default ?classes ?template ?template_data arg
-
-  let option_template : 'a 'param_names 'template_data .
-      'template_data ->
-      ( 'a,
-        'param_names,
-        'template_data
-      ) Template.t ->
-      ( 'a option,
-        'param_names option_param_names,
-        ( 'a, 'template_data ) option_template_data
-      ) Template.t
-    =
-    fun the_template_data the_template ->
-      Template.template
-        (fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[])
-          ~(template_data : (_, _) option_template_data)
-          (* ?(template_data=template_data ()) *) ~param_names field_renderings ->
-            let checkbox_param_name, param_names, local_param_names =
-          match param_names with
-          | `Param_names (checkbox_param_name, param_names) ->
-            `Param_names checkbox_param_name, `Param_names param_names, `Param_names ()
-          | `Display -> `Display, `Display, `Display
-        in
-        let set_checked = {Dom_html.element Js.t -> unit{
-          fun (checkbox : Dom_html.element Js.t) ->
-            match parent_with_class form_option_class checkbox with
-            | Some field ->
-              set_checked field
-            | None -> Eliom_lib.error "Form_option.template: no parent field"
-        }} in
-        let onclick = {{
-          fun ev ->
-            let checkbox =
-              Js.Optdef.get (ev ## target)
-                (fun () -> Eliom_lib.error "Form_option.template: not an input")
-            in
-            %set_checked checkbox
-        }} in
-        let field_rendering =
-          let selector =
-            let open Eliom_content.Html5.F in
-            match checkbox_param_name with
-            | `Display -> None
-            | `Param_names checkbox_param_name ->
-              let checked = option_get ~default:None default <> None in
-              let checkbox =
-                let a = [a_onclick onclick; a_class [form_option_checkbox_class]] in
-                Eliom_content.Html5.D.bool_checkbox ~a ~checked ~name:checkbox_param_name ()
-              in
-              ignore {unit{
-                Eliom_client.onload
-                (fun () ->
-                  %set_checked (Eliom_content.Html5.To_dom.of_element %checkbox))
-              }};
-              Some [checkbox]
-          in
-          let label = Some (option_get ~default:[] template_data#label) in
-          let content =
-            let default = option_get ~default:None default in
-            the_template
-              (Template.arguments
-                 ~is_outmost:false ?submit ?default ~param_names
-                 ~template_data:the_template_data field_renderings)
-          in
-          Component_rendering.mk ?label ?selector ?annotation ~content () in
-        let a = Eliom_content.Html5.F.a_class [form_option_class] :: a in
-        let default = option_get ~default:None default in
-        template_data#template
-          (Template.arguments ~is_outmost ?submit ?label
-             ?annotation:template_data#annotation ?default ~a
-             ~template_data:template_data#template_data
-             ~param_names:local_param_names [field_rendering]))
-
-  module Make :
-    functor (Options : Record_options) ->
-      Form with
-        type a = Options.a option and
-        type repr = bool * Options.repr option and
-        type param_names = Options.param_names option_param_names and
-        type template_data = (Options.a, Options.template_data) option_template_data and
-        type deep_config =
-          ( Options.a, Options.param_names, Options.deep_config, Options.template_data
-          ) Config.t option and
-        type ('arg, 'res) opt_component_configs_fun =
-          ( Options.a, Options.param_names, Options.deep_config, Options.template_data
-          ) Config.t option ->
-          'arg -> 'res
-  =
-    functor (Options : Record_options) -> struct
-      module Options = struct
-        type a = Options.a option
-        type repr = bool * Options.repr option
-        type param_names = Options.param_names option_param_names
-        type template_data = (Options.a, Options.template_data) option_template_data
-        type 'res template_data_fun = ?template:(Options.a, unit, Options.template_data) Template.t -> ?template_data:Options.template_data -> ?label:form_content -> ?annotation:form_content -> unit -> 'res
-        let apply_template_data_fun (f : _ template_data_fun) = f ()
-        let pre_template_data  =
-          fun k ?(template=default_template)
-            ?(template_data=Options.apply_template_data_fun (Options.pre_template_data identity))
-            ?label ?annotation () ->
-          k (object
-               method template = template
-               method template_data = template_data
-               method label = label
-               method annotation = annotation
-             end)
-
-        let params_type prefix =
-          prefix,
-          Eliom_parameter.prod
-            (Eliom_parameter.bool (prefix^"|is_some"))
-            (Eliom_parameter.opt (Options.params_type (prefix^"|some")))
-        type deep_config =
-          ( Options.a, Options.param_names, Options.deep_config, Options.template_data
-          ) Config.t option
-        let default_deep_config = None
-
-        let to_repr = function
-          | None -> false, None
-          | Some x -> true, Some (Options.to_repr x)
-        let of_repr = function
-          | (false, _) -> None
-          | (true, Some x) -> Some (Options.of_repr x)
-          | _ -> failwith "Form_option_functor.of_repr"
-
-        type ('arg, 'res) opt_component_configs_fun =
-            deep_config -> 'arg -> 'res
-
-        let opt_component_configs_fun f deep_config arg = f deep_config arg
-
-        let component_names = [ "" ]
-
-        let suffix_Some = "|Some"
-
-        let fields =
-          let module Field = struct
-            type enclosing_a = a
-            type enclosing_param_names = param_names
-            type enclosing_deep_config = deep_config
-            let project_default x = x
-            let project_param_names (_, param_names) =
-              param_names
-            let project_config deep_config = deep_config
-            include Make_record (Options)
-          end in
-          [ ((module Field) : (a, param_names, deep_config) field) ]
-
-        let default_template =
-          option_template
-            Options.(apply_template_data_fun (pre_template_data identity))
-            default_template
-      end
-      include Make_record (Options)
-    end
-end
-
-module type Bijection = sig
-  include Repr
-  val of_string : string -> repr
-  val to_string : repr -> string
-  type template_data
-  type original_template_data
-  val import_template_data : original_template_data -> template_data
-  val export_template_data : template_data -> original_template_data
-end
-*)
-(* module Bijection_options = *)
-(*   functor (Options : Options) -> *)
-(*     functor (Bijection : Bijection *)
-(*              with type repr = Options.a *)
-(*              and type original_template_data = Options.template_data) -> *)
-(*       (struct *)
-(*         include Bijection *)
-(*         type param_names = [`One of repr] Eliom_parameter.param_name *)
-(*         type deep_config = Options.deep_config *)
-(*         let default_deep_config = Options.default_deep_config *)
-(*         let params_type prefix = *)
-(*           Eliom_parameter.user_type *)
-(*             ~to_string:Bijection.to_string *)
-(*             ~of_string:Bijection.of_string *)
-(*             prefix *)
-(*         let default_template_data ?default () = *)
-(*           option_map *)
-(*             Bijection.import_template_data *)
-(*             (Options.default_template_data *)
-(*                ?default:(option_map Bijection.to_repr default) ()) *)
-(*         let default_template ~is_outmost ?submit ?label ?annotation ?default *)
-(*             ?classes ?template_data ~param_names field_renderings = *)
-(*           Options.default_template *)
-(*             ~is_outmost ?submit ?label ?annotation *)
-(*             ?default:(option_map Bijection.to_repr default) *)
-(*             ?classes *)
-(*             ?template_data:(option_map Bijection.export_template_data template_data) *)
-(*             ~param_names field_renderings *)
-(*         let fields = *)
-(*           List.map *)
-(*             (fun (field : (Options.a, Options.param_names, Options.deep_config) field) -> *)
-(*               let module Field = (val field) in *)
-(*               let module Field = struct *)
-(*                 include (Field : Pre_form) *)
-(*                 type enclosing_a = Bijection.a *)
-(*                 let project_default enclosing = *)
-(*                   Field.project_default (Bijection.to_repr enclosing) *)
-(*                 type enclosing_param_names = [`One of repr] Eliom_parameter.param_name *)
-(*                 let project_param_names = Field.project_param_names *)
-(*               end in *)
-(*               ((module Field) : (a, param_names, deep_config) field)) *)
-(*           Options.fields *)
-(*         let field_names = Options.field_names *)
-(*         type ('arg, 'res) opt_component_configs_fun = ('arg, 'res)  Options.opt_component_configs_fun *)
-(*         let opt_component_configs_fun = Options.opt_component_configs_fun *)
-(*        end : Options with type a = Bijection.a *)
-(*                      and type template_data = Bijection.template_data *)
-(*                      and type param_names = [`One of Bijection.repr] Eliom_parameter.param_name *)
-(*                      and type deep_config = Options.deep_config) *)
 
 module Types = struct
   type string_or_empty = string
