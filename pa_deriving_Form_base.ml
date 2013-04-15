@@ -252,7 +252,17 @@ module Builder (Loc : Defs.Loc) = struct
             component_names
             (<:expr< fun arg -> k $component_tuple_expr$ arg >>)
         in
-        let params_type_expr =
+        let prefix_lid = Printf.sprintf "prefix_%s" in
+        let prefix_decls =
+          List.map
+            (fun component_name ->
+              <:str_item<
+                let $lid:prefix_lid component_name$ prefix =
+                  Deriving_Form.prefix_concat ~prefix $str:component_name$
+              >> )
+            component_names
+        in
+        let params_type'_expr =
           let product =
             fold_right1
               (fun component_type sofar ->
@@ -264,27 +274,29 @@ module Builder (Loc : Defs.Loc) = struct
                 List.map
                   (fun component_name ->
                     <:expr<
-                      $uid:component_module_name component_name$ . params_type
-                        (prefix ^ "_" ^ $str:component_name$ )
+                      (snd ($uid:component_module_name component_name$ . params_type'
+                              ($lid:prefix_lid component_name$ prefix)))
                      >>)
                    component_names
               in
-              <:expr< fun prefix -> $product params_types$ >>
+              <:expr< fun prefix -> prefix, $product params_types$ >>
             | Type.Sum _ ->
               let optional_params_types =
                 List.map
                   (fun component_name ->
                     <:expr<
                       Eliom_parameter.opt
-                        ($uid:component_module_name component_name$ . params_type
-                          (prefix ^ "_" ^ $str:component_name$))
+                        (snd ($uid:component_module_name component_name$ . params_type'
+                                ($lid:prefix_lid component_name$ prefix)))
                      >>)
                    component_names
               in
               <:expr<
                 fun prefix ->
+                  prefix,
                   Eliom_parameter.prod
-                    (Eliom_parameter.string (prefix^"_constructor"))
+                    (Eliom_parameter.string
+                       (Deriving_Form.prefix_concat ~prefix "|constructor"))
                     $product optional_params_types$
               >>
         in
@@ -372,6 +384,7 @@ module Builder (Loc : Defs.Loc) = struct
                   let project_default = $project_default_expr component_name$
                   let project_param_names = $project_param_names_expr component_name$
                   let project_config = $lid:project component_name$
+                  let prefix = $lid:prefix_lid component_name$
                   ;; $is_constructor_decl$
                   include $uid:component_module_name component_name$
                 end
@@ -510,7 +523,8 @@ module Builder (Loc : Defs.Loc) = struct
               let component_names = $Helpers.expr_list component_name_strings$
               let of_repr = $of_repr_expr$
               let to_repr = $to_repr_expr$
-              let params_type = $params_type_expr$
+              ;; $Ast.stSem_of_list prefix_decls$
+              let params_type' = $params_type'_expr$
               type ('arg, 'res) opt_component_configs_fun =
                 $Helpers.Untranslate'.expr opt_component_configs_fun_type$
               let opt_component_configs_fun k =
