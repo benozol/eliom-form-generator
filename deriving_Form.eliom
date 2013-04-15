@@ -107,14 +107,23 @@ let form_option_class = "__eliom_form_option__"
 let form_option_checkbox_class = "__eliom_form_option_checkbox__"
 let component_not_required_class = "__eliom_form_component_not_required__"
 let input_marker_class = "__eliom_form_input_marker__"
+let form_list_list_class = "__eliom_form_list_list__"
+let form_list_list_item_class = "__eliom_form_list_list_item__"
+let form_list_remove_button_class = "__eliom_form_list_remove_button__"
 
 let prefix_concat ~prefix suffix = prefix ^ "|" ^ suffix
 let param_name_root = "__eliom_form__"
 
 let form_sum_variant_attribute =
   Eliom_content.Html5.Custom_data.create
-    ~name:"__eliom_form_sum_variant"
-    ~to_string:identity ~of_string:identity ()
+    ~name:"__eliom_form_sum_variant__"
+    ~default:""
+    ~to_string:identity
+    ~of_string:identity
+    ()
+
+let input_marker =
+  Eliom_content.Html5.F.(span ~a:[a_class [input_marker_class]] [])
 
 module Component_rendering = struct
   type t = {
@@ -423,24 +432,30 @@ end
 
 {client{
 
-  let rec parent_with_class =
-    fun class_ element ->
-      Js.Opt.case
-        (Js.Opt.bind
-           (element ## parentNode)
-           Dom_html.CoerceTo.element)
-        (fun () ->
-          None)
-        (fun parent ->
-          if Js.to_bool (parent ## classList ## contains (Js.string class_)) then
-            Some parent
-          else
-            parent_with_class class_ parent)
+  let parent_with_class =
+    fun ?(strict=true) class_ element ->
+      if not strict && Js.to_bool (element ## classList ## contains (Js.string class_)) then
+        Some element
+      else
+        let rec aux element =
+          Js.Opt.case
+            (Js.Opt.bind
+               (element ## parentNode)
+               Dom_html.CoerceTo.element)
+            (fun () ->
+              None)
+            (fun parent ->
+              if Js.to_bool (parent ## classList ## contains (Js.string class_)) then
+                Some parent
+              else
+                aux parent)
+        in
+        aux element
 
-  let find_form_node node =
-    match parent_with_class form_class (node :> Dom_html.element Js.t) with
+  let find_form_node ?strict node =
+    match parent_with_class ?strict form_class (node :> Dom_html.element Js.t) with
       | Some form_node -> form_node
-      | None -> failwith "find_form_node"
+      | None -> raise Not_found
 
   let classify_form_node form_node =
     let form_node = (form_node :> Dom_html.element Js.t) in
@@ -467,9 +482,8 @@ end
 
   let rec is_required_rec : Dom_html.element Js.t -> bool =
     fun node ->
-      match parent_with_class form_class node with
-      | None -> true
-      | Some form_node ->
+      try
+        let form_node = find_form_node node in
         let locally_required =
           match classify_form_node form_node with
           | `Record -> true
@@ -477,46 +491,65 @@ end
               if Js.to_bool (node ## classList ## contains
                    (Js.string form_sum_dropdown_variant_selector_class)) then
                 true
-              else
-                begin
-                  try
-                    let selected_variant_name =
-                      Eliom_content.Html5.Custom_data.get_dom form_node form_sum_variant_attribute
-                    in
-                    let variant_node =
-                      option_get' ~default:(fun () -> failwith "is_required_rec: variant")
-                        (parent_with_class form_sum_variant_class node) in
-                    let variant_name =
-                      Eliom_content.Html5.Custom_data.get_dom variant_node
-                        form_sum_variant_attribute
-                    in
-                    variant_name = selected_variant_name
-                  with Not_found -> false
-                end
+              else begin
+                let selected_variant_name =
+                  Eliom_content.Html5.Custom_data.get_dom form_node
+                    form_sum_variant_attribute
+                in
+                let variant_node =
+                  option_get' ~default:(fun () -> failwith "is_required_rec: variant")
+                    (parent_with_class ~strict:false form_sum_variant_class node) in
+                let variant_name =
+                  Eliom_content.Html5.Custom_data.get_dom variant_node
+                    form_sum_variant_attribute
+                in
+                variant_name = selected_variant_name
+              end
         in
         locally_required && is_required_rec form_node
+      with
+        Not_found -> true
   let is_required_rec node = is_required_rec (node :> Dom_html.element Js.t)
 
   let form_inputs_set_required form_node =
+    if not (Js.to_bool (form_node ## classList ## contains (Js.string form_class))) then
+      failwith "form_inputs_set_required";
     let inputs =
-      form_node ## querySelectorAll
-        (Printf.ksprintf Js.string
-           "input:not([type='checkbox']):not(.%s),\
-            select:not(.%s)"
-           component_not_required_class
-           component_not_required_class)
+      Dom.list_of_nodeList
+        (form_node ## querySelectorAll
+           (ksprintf Js.string
+              "input:not([type='checkbox']):not(.%s),\
+               select:not(.%s)"
+              component_not_required_class
+              component_not_required_class))
     in
+    Firebug.console ## log_4 (Js.string "form_inputs_set_required on", form_node, List.length inputs, inputs);
     List.iter
       (fun node ->
-        Js.Opt.iter
-          (Dom_html.CoerceTo.input node)
+        Js.Opt.iter (Dom_html.CoerceTo.input node)
           (fun input ->
-            input ## required <- Js.bool (is_required_rec input));
-        Js.Opt.iter
-          (Dom_html.CoerceTo.select node)
+            let is_required = is_required_rec input in
+            Firebug.console ## log_3 (Js.string "input", is_required, input);
+            input ## required <- Js.bool is_required);
+        Js.Opt.iter (Dom_html.CoerceTo.select node)
           (fun select ->
-            select ## required <- Js.bool (is_required_rec select)))
-      (Dom.list_of_nodeList inputs)
+            let is_required = is_required_rec select in
+            Firebug.console ## log_3 (Js.string "select", is_required, select);
+            select ## required <- Js.bool is_required);
+        ())
+      inputs;
+    let variants =
+      Dom.list_of_nodeList
+        (form_node ## querySelectorAll
+           (ksprintf Js.string ".%s" form_sum_variant_class))
+    in
+    List.iter
+      (fun variant ->
+        let is_required = is_required_rec variant in
+        Firebug.console ## log_3 (Js.string "variant", is_required, variant);
+        variant ## style ## display <- Js.string (if is_required then "" else "none"))
+      variants;
+    ()
 
   let connect_select_variant select_node =
     Lwt_js_events.async
@@ -533,15 +566,15 @@ end
 
 {shared{
 
-let for_outmost ~is_outmost = function
+let set_required_for_outmost ~is_outmost = function
   | elt :: elts when is_outmost ->
     let id = Eliom_content.Html5.Id.new_elt_id () in
     ignore {unit{
       Eliom_client.onload
-      (fun () ->
-        form_inputs_set_required
-          (Eliom_content.Html5.To_dom.of_element
-             (Eliom_content.Html5.Id.get_element %id)))
+        (fun () ->
+          form_inputs_set_required
+            (Eliom_content.Html5.To_dom.of_element
+               (Eliom_content.Html5.Id.get_element %id)))
     }};
     Eliom_content.Html5.Id.create_named_elt ~id elt :: elts
   | elts -> elts
@@ -666,7 +699,7 @@ module Make_sum
                         connect_select_variant select_node;
                         Lwt.return ())
                   }};
-                  div ~a:[a_class ["contains_select"]] [ select ]
+                  div ~a:[a_class ["contains_select"]] [ select ; input_marker ]
               | `Display ->
                   let variant_name =
                     match local.Config.default with
@@ -704,12 +737,12 @@ module Make_sum
              in
              let local =
                let default_local =
-                 let label = Some [pcdata (default_label_of_component_name variant_name)] in
+                 (* let label = Some [pcdata (default_label_of_component_name variant_name)] in *)
                  let default = option_bind Variant.project_default local.Config.default in
                  let template_data =
                    Some (Variant.apply_template_data_fun (Variant.pre_template_data identity))
                  in
-                 { Config.label ; default ;
+                 { Config.default ; label = None ;
                    template = None ; annotation = None ;
                    template_data ; classes = None }
                in
@@ -725,16 +758,16 @@ module Make_sum
            else
              let selector =
                match variant_selection with
-               | `Drop_down -> None
+                 | `Drop_down -> None
              in
              let content =
                let param_names =
                  match param_names with
-                 | `Display -> `Display
-                 | `Param_names (prefix, param_names) ->
-                   `Param_names
-                     (Variant.prefix prefix,
-                      Variant.project_param_names param_names)
+                   | `Display -> `Display
+                   | `Param_names (prefix, param_names) ->
+                     `Param_names
+                       (Variant.prefix prefix,
+                        Variant.project_param_names param_names)
                in
                Variant.pre_render false submit
                  param_names config
@@ -766,10 +799,24 @@ module Make_sum
         template
     in
     let component_renderings = variant_renderings submit param_names config variant_selection in
-    for_outmost ~is_outmost
+    let a =
+      match default with
+        | Some default ->
+          let variant_name, _ =
+            List.find
+              (fun (_, variant) ->
+                 let module Variant = (val (variant : (Options.a, Options.param_names, Options.deep_config) variant)) in
+                 Variant.is_constructor default)
+              (List.combine Options.component_names Options.variants)
+          in
+          [ Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute
+              variant_name ]
+        | None -> []
+    in
+    set_required_for_outmost ~is_outmost
       (template
          (Template.arguments
-            ~is_outmost ?submit ?label ?annotation ?default
+            ~is_outmost ?submit ?label ?annotation ?default ~a
             ~param_names ~template_data component_renderings))
 
 
@@ -873,7 +920,7 @@ module Make_record :
                 (form_class :: form_record_class ::
                    option_get ~default:[] classes)]
       in
-      for_outmost ~is_outmost
+      set_required_for_outmost ~is_outmost
         (template
            (Template.arguments
               ~is_outmost ?submit ?label ?annotation
@@ -938,9 +985,6 @@ module Make_atomic_options (Atomic_options : Atomic_options) = struct
   let default_deep_config = ()
   let opt_component_configs_fun k = k ()
 end
-
-let input_marker =
-  Eliom_content.Html5.F.(span ~a:[a_class [input_marker_class]] [])
 
 let form_string_default_template can_be_empty =
   let open Eliom_content.Html5.F in
@@ -1224,9 +1268,6 @@ end
 }}
 
 {shared{
-  let form_list_list_class = "__eliom_form_list_list"
-  let form_list_list_item_class = "__eliom_form_list_list_item"
-  let form_list_remove_button_class = "__eliom_form_list_remove_button"
   let list_suffix = "list"
   let list_elt_suffix = "elt"
   let list_combined_suffix = Printf.sprintf "%s.%s" list_suffix list_elt_suffix
@@ -1365,6 +1406,7 @@ module Form_list = struct
         snd (params_type' (prefix^param_name_root))
       type config = (a, param_names, deep_config, template_data) Config.t
       let component_names = []
+
       let pre_render : bool -> button_content option -> param_names or_display -> config -> form_content =
         let sub_config config sub_default_opt =
           let config =
@@ -1474,7 +1516,7 @@ module Form_list = struct
                       form_inputs_set_required (find_form_node a_node);
                       Lwt.return ()));
             }};
-            [ list; add_a ]
+            set_required_for_outmost ~is_outmost [list] @ [ add_a ]
 
       type ('arg, 'res) opt_component_configs_fun =
           ?elt:Form.config -> 'arg -> 'res
