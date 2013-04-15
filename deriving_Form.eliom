@@ -1366,13 +1366,12 @@ end
     Scanf.format_from_string const ""^^"%s[%d]%s"
 }}
 {client{
-  type has_name = < name : Js.js_string Js.t Js.prop > Js.t
   let rearrange_input_names prefix ?new_item list_node =
     let set_input_names new_index node =
       Firebug.console ## log_2 (Js.string "set_input_names", node);
-      let node = (node :> has_name) in
       let const = prefix_concat prefix list_combined_suffix in
-      (* eliom_prefix ^_0 const ^_1 between ^_2 [N ^_3 ] ^ rest *)
+      (* pattern of prefix:
+         eliom_prefix ^_0 const ^_1 between ^_2 [N ^_3 ] ^ rest *)
       let name = node ## name in
       let index_0 = name ## indexOf (Js.string param_name_root) in
       let index_1 = name ## indexOf_from (Js.string const, index_0) in
@@ -1405,11 +1404,14 @@ end
         Hashtbl.find mapping index
     in
     let input_or_select node =
+      let force_read_write_name : < name : Js.js_string Js.t Js.readonly_prop ; .. > Js.t -> < name : Js.js_string Js.t Js.prop > Js.t =
+        Obj.magic (* Force name to be writeable - it's readonly in js_of_ocaml due tue IE8 *)
+      in
       let opt = Dom_html.CoerceTo.input node in
       if Js.Opt.test opt then
-        (opt :> has_name Js.opt)
+        Js.Opt.map opt force_read_write_name
       else
-        (Dom_html.CoerceTo.select node :> has_name Js.opt)
+        Js.Opt.map (Dom_html.CoerceTo.select node) force_read_write_name
     in
     List.iter
       (fun node ->
