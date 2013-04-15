@@ -1,5 +1,5 @@
-Deriving Eliom from type definitions
-============================
+Deriving Eliom functionality from type definitions
+==================================================
 
 Derive easily Eliom form content from record and ADT type declarations, like this:
 
