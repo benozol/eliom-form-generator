@@ -258,7 +258,7 @@ module Builder (Loc : Defs.Loc) = struct
             (fun component_name ->
               <:str_item<
                 let $lid:prefix_lid component_name$ prefix =
-                  Deriving_Form.prefix_concat ~prefix $str:component_name$
+                  Deriving_Form_base.prefix_concat ~prefix $str:component_name$
               >> )
             component_names
         in
@@ -296,7 +296,7 @@ module Builder (Loc : Defs.Loc) = struct
                   prefix,
                   Eliom_parameter.prod
                     (Eliom_parameter.string
-                       (Deriving_Form.prefix_concat ~prefix "|constructor"))
+                       (Deriving_Form_base.prefix_concat ~prefix "|constructor"))
                     $product optional_params_types$
               >>
         in
@@ -503,15 +503,15 @@ module Builder (Loc : Defs.Loc) = struct
         in
         let make_module_name, components_list_name, component_type_name =
           match repr with
-            | Type.Record _ -> "Make_record", "fields", "field"
-            | Type.Sum _ -> "Make_sum", "variants", "variant"
+            | Type.Record _ -> ["Deriving_Form_record";"Make"], "fields", "field"
+            | Type.Sum _ -> ["Deriving_Form_sum";"Make"], "variants", "variant"
         in
         let project_selector_param_name_decl =
           <:str_item< let project_selector_param_name = fst >>
         in
         <:str_item<
           module $uid:form_module_name type_name$ = struct
-            open Deriving_Form
+            open Deriving_Form_base
             module Options = struct
               type a = $lid:type_name$
               ;; $Ast.stSem_of_list component_module_decls$
@@ -529,13 +529,13 @@ module Builder (Loc : Defs.Loc) = struct
                 $Helpers.Untranslate'.expr opt_component_configs_fun_type$
               let opt_component_configs_fun k =
                 $exp:opt_component_configs_fun$
-              let default_template = Deriving_Form.default_template
+              let default_template = default_template
               let $lid:components_list_name$ :
                 (a, param_names, deep_config) $lid:component_type_name$ list =
                 $fields_expr$
               ;; $project_selector_param_name_decl$
             end
-            include $uid:make_module_name$ (Options)
+            include $id:ident_of_qname make_module_name$ (Options)
           end
         >>
       | _ -> Base.fatal_error _loc "Form not available here"

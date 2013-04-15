@@ -12,10 +12,10 @@ package "syntax_tc" (
 package "server" (
   requires = "eliom.server str"
   directory = "server"
-  archive(byte) = "deriving_Form.cmo"
+  archive(byte) = "@@CMO_FILES@@"
 )
 package "client" (
  requires = "eliom.client str"
  directory = "client"
- archive(byte) = "deriving_Form.cmo"
+ archive(byte) = "@@CMO_FILES@@"
 )
