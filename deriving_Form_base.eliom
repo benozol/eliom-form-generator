@@ -98,13 +98,10 @@ end
 let form_class = "__eliom_form__"
 let form_sum_class = "__eliom_form_sum__"
 let form_sum_variant_class = "__eliom_form_sum_variant__"
-let form_sum_radio_variant_selector_class = "__eliom_form_sum_variant_selector__"
 let form_sum_dropdown_variant_selector_class = "__eliom_form_sum_variant_selector__"
 let form_sum_radio_class = "__eliom_form_sum_radio__"
 let form_sum_dropdown_class = "__eliom_form_sum_dropdown__"
 let form_record_class = "__eliom_form_record__"
-let form_option_class = "__eliom_form_option__"
-let form_option_checkbox_class = "__eliom_form_option_checkbox__"
 let component_not_required_class = "__eliom_form_component_not_required__"
 let input_marker_class = "__eliom_form_input_marker__"
 let form_list_list_class = "__eliom_form_list_list__"
@@ -473,13 +470,12 @@ end
     let contains clazz = Js.to_bool (form_node ## classList ## contains (Js.string clazz)) in
     if not (contains form_class) then
       failwith "classify_form_node";
-    match contains form_record_class, contains form_sum_class, contains form_option_class with
-      | true, false, false -> `Record
-      | false, true, false ->
-        begin match contains form_sum_radio_class, contains form_sum_dropdown_class with
-          | false, true -> `Sum `Drop_down
-          | _ -> failwith "classify_form_node: sum"
-        end
+    match contains form_record_class, contains form_sum_class with
+      | true, false -> `Record
+      | false, true ->
+        if contains form_sum_dropdown_class then
+          `Sum `Drop_down
+        else failwith "classify_form_node: sum"
       | _ -> failwith "classify_form_node"
 
   let rec nodes_between ~root ~descendent =

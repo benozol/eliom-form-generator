@@ -2,60 +2,6 @@
   open Deriving_Form_base
 }}
 
-{client{
-
-  let is_option_checked form =
-    let checkbox =
-      Js.Opt.get
-        (Js.Opt.bind
-           (form ## querySelector
-              (Printf.ksprintf Js.string
-                 " .field:nth-child(1) .%s"
-                 form_option_checkbox_class))
-           Dom_html.CoerceTo.input)
-        (fun () -> Eliom_lib.error "set_checked: No checkbox")
-    in
-    Js.to_bool (checkbox ## checked)
-
-  let rec is_option_checked_rec form =
-    is_option_checked form &&
-      (match parent_with_class form_option_class form with
-        | None -> true
-        | Some parent_form ->
-          is_option_checked_rec parent_form)
-
-  let rec set_checked =
-    fun form ->
-      try
-      let inputs =
-        form ## querySelectorAll
-          (Printf.ksprintf Js.string
-             "input:not([type='checkbox']):not(.%s)"
-             component_not_required_class)
-      in
-      List.iter
-        (fun input ->
-          let checked =
-            option_get' ~default:(fun () -> false)
-              (option_map
-                 (fun form ->
-                   is_option_checked_rec form)
-                 (parent_with_class form_option_class input))
-          in
-          let input =
-            Js.Opt.get
-              (Dom_html.CoerceTo.input input)
-              (fun () -> Eliom_lib.error "set_checked: not an input")
-          in
-          input ## required <- Js.bool checked)
-        (Dom.list_of_nodeList inputs);
-      option_iter set_checked
-        (parent_with_class form_option_class form)
-      with exc ->
-        Eliom_lib.error "ERROR: %s"
-          (Printexc.to_string exc)
-}}
-
 {shared{
   module Make (Form : Form) = struct
     module Options = struct
