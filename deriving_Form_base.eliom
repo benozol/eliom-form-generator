@@ -394,36 +394,9 @@ module type Field = sig
   val prefix : string -> string
 end
 
-type ('a, 'param_names, 'deep_config) field =
-  (module Field with
-    type enclosing_a = 'a and
-    type enclosing_param_names = 'param_names and
-    type enclosing_deep_config = 'deep_config)
-
-module type Record_options = sig
-  include Base_options
-  val fields : (a, param_names, deep_config) field list
-end
-
-(******************************************************************************)
-
-type selector_param_name = [`One of string] Eliom_parameter.param_name
-
 module type Variant = sig
   include Field
   val is_constructor : enclosing_a -> bool
-end
-
-type ('a, 'param_names, 'deep_config) variant =
-  (module Variant with
-    type enclosing_a = 'a and
-    type enclosing_param_names = 'param_names and
-    type enclosing_deep_config = 'deep_config)
-
-module type Sum_options = sig
-  include Base_options
-  val variants : (a, param_names, deep_config) variant list
-  val project_selector_param_name : param_names -> selector_param_name
 end
 
 (******************************************************************************)

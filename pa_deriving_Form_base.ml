@@ -86,6 +86,9 @@ module Builder (Loc : Defs.Loc) = struct
 
   let type_expr_from_qname qname = `Constr (List.rev qname, [])
 
+  let rec ctyp_of_qname qname =
+    Helpers.Untranslate'.expr (`Constr (qname, []))
+
   let tuple_expr exprs =
     fold_right1
       (fun expr sofar ->
@@ -503,8 +506,8 @@ module Builder (Loc : Defs.Loc) = struct
         in
         let make_module_name, components_list_name, component_type_name =
           match repr with
-            | Type.Record _ -> ["Deriving_Form_record";"Make"], "fields", "field"
-            | Type.Sum _ -> ["Deriving_Form_sum";"Make"], "variants", "variant"
+            | Type.Record _ -> ["Deriving_Form_record";"Make"], "fields", ["Deriving_Form_record";"field"]
+            | Type.Sum _ -> ["Deriving_Form_sum";"Make"], "variants", ["Deriving_Form_sum";"variant"]
         in
         let project_selector_param_name_decl =
           <:str_item< let project_selector_param_name = fst >>
@@ -531,7 +534,7 @@ module Builder (Loc : Defs.Loc) = struct
                 $exp:opt_component_configs_fun$
               let default_template = default_template
               let $lid:components_list_name$ :
-                (a, param_names, deep_config) $lid:component_type_name$ list =
+                (a, param_names, deep_config) $ctyp_of_qname component_type_name$ list =
                 $fields_expr$
               ;; $project_selector_param_name_decl$
             end

@@ -2,6 +2,20 @@
 
 open Deriving_Form_base
 
+type selector_param_name = [`One of string] Eliom_parameter.param_name
+
+type ('a, 'param_names, 'deep_config) variant =
+  (module Variant with
+    type enclosing_a = 'a and
+    type enclosing_param_names = 'param_names and
+    type enclosing_deep_config = 'deep_config)
+
+module type Sum_options = sig
+  include Base_options
+  val variants : (a, param_names, deep_config) variant list
+  val project_selector_param_name : param_names -> selector_param_name
+end
+
 type variant_selection = [`Drop_down(* | `Radio*)]
 let default_variant_selection : variant_selection = `Drop_down
 

@@ -2,6 +2,17 @@
 
 open Deriving_Form_base
 
+type ('a, 'param_names, 'deep_config) field =
+  (module Field with
+    type enclosing_a = 'a and
+    type enclosing_param_names = 'param_names and
+    type enclosing_deep_config = 'deep_config)
+
+module type Record_options = sig
+  include Base_options
+  val fields : (a, param_names, deep_config) field list
+end
+
 module Make :
   functor (Options : Record_options) ->
     Form with
