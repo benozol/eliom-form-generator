@@ -517,7 +517,7 @@ module Builder (Loc : Defs.Loc) = struct
               ;; $Ast.stSem_of_list component_module_decls$
               type param_names = $param_names_ctyp$
               type deep_config = $deep_config_ctyp$
-              include Template_data_unit
+              include Template_data_unit (struct type t = a end)
               let default_deep_config = $default_deep_config_expr$
               type repr = $repr_ctyp$
               let component_names = $Helpers.expr_list component_name_strings$

@@ -4,7 +4,7 @@
 module type Atomic_options = sig
   type a
   type param_names
-  include Template_data
+  include Template_data with type a := a
   val default_template : (a, param_names, template_data) Template.t
   val params_type : string -> (a, [`WithoutSuffix], param_names) Eliom_parameter.params_type
 end
@@ -62,8 +62,8 @@ module Form_string =
       type param_names = [`One of string] Eliom_parameter.param_name
       type template_data = string option
       type 'res template_data_fun = ?required_pattern:string -> unit -> 'res
-      let pre_template_data k ?required_pattern () = k required_pattern
-      let apply_template_data_fun (f : _ template_data_fun) = f ()
+      let pre_template_data ?default k ?required_pattern () = k required_pattern
+      let apply_template_data_fun ?default (f : _ template_data_fun) = f ()
       let params_type = Eliom_parameter.string
       let default_template = form_string_default_template false
      end)
@@ -74,7 +74,10 @@ module Form_int =
       type a = int
       type param_names = [`One of int] Eliom_parameter.param_name
       let params_type = Eliom_parameter.int
-      include Template_data_unit
+      type template_data = unit
+      type 'res template_data_fun = 'res
+      let pre_template_data ?default k = k ()
+      let apply_template_data_fun ?default (f : _ template_data_fun) = f
       let default_template =
         let open Eliom_content.Html5.F in
         Template.template
@@ -100,8 +103,8 @@ module Form_int64 =
       let params_type = Eliom_parameter.int64
       type template_data = (int64 * pcdata * bool) list option
       type 'res template_data_fun = ?from_list:(int64 * pcdata * bool) list -> unit -> 'res
-      let pre_template_data k ?from_list () = k from_list
-      let apply_template_data_fun (f : _ template_data_fun) = f ()
+      let pre_template_data ?default k ?from_list () = k from_list
+      let apply_template_data_fun ?default (f : _ template_data_fun) = f ()
       let default_template =
         let open Eliom_content.Html5.F in
         Template.template
@@ -144,7 +147,7 @@ module Form_unit =
     (struct
       type a = unit
       type param_names = unit
-      include Template_data_unit
+      include Template_data_unit (struct type t = a end)
       let params_type _ = Eliom_parameter.unit
       let default_template config =
         assert (config.Template.component_renderings = []);

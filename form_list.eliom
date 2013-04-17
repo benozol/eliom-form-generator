@@ -127,7 +127,7 @@
       type param_names = Form.param_names list_param_names
       type deep_config = Form.config option
       let default_deep_config = None
-      include Template_data_unit
+      include Template_data_unit (struct type t = a end)
       let template_data = ()
       let prefix_elt prefix = prefix_concat ~prefix list_suffix
       let params_type' prefix =

@@ -13,7 +13,7 @@
           (Component_None.param_names * Component_Some.param_names)
       type deep_config = Component_None.config option * Component_Some.config option
       let default_deep_config = None, None
-      include Template_data_unit
+      include Template_data_unit (struct type t = a end)
       type repr = string * (Component_None.repr option * Component_Some.repr option)
       let component_names = [ "None" ; "Some" ]
       let of_repr = function

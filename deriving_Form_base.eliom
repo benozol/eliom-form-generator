@@ -317,22 +317,26 @@ module type Repr = sig
 end
 
 module type Template_data = sig
+  type a
   type template_data
   type 'res template_data_fun
-  val pre_template_data : (template_data -> 'res) -> 'res template_data_fun
-  val apply_template_data_fun : 'res template_data_fun -> 'res
+  val pre_template_data : ?default:a -> (template_data -> 'res) -> 'res template_data_fun
+  val apply_template_data_fun : ?default:a -> 'res template_data_fun -> 'res
 end
 
 module Template_data_unit :
-  Template_data with
-    type template_data = unit and
-    type 'res template_data_fun = 'res =
-struct
-  type template_data = unit
-  type 'res template_data_fun = 'res
-  let apply_template_data_fun (f : _ template_data_fun) = f
-  let pre_template_data k = k ()
-end
+  functor (T : sig type t end) ->
+    Template_data with
+      type template_data = unit and
+      type 'res template_data_fun = 'res and
+      type a := T.t =
+  functor (T : sig type t end) -> struct
+    type a = T.t
+    type template_data = unit
+    type 'res template_data_fun = 'res
+    let pre_template_data ?default k = k ()
+    let apply_template_data_fun ?default (f : _ template_data_fun) = f
+  end
 
 module type Base_options = sig
   type a
@@ -340,7 +344,7 @@ module type Base_options = sig
   type deep_config
   type ('arg, 'res) opt_component_configs_fun
   include Repr with type t := a
-  include Template_data
+  include Template_data with type a := a
   val params_type' : string -> string * (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val opt_component_configs_fun : (deep_config -> 'arg -> 'res) ->
     ('arg, 'res) opt_component_configs_fun

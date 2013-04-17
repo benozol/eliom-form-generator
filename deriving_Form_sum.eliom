@@ -61,10 +61,10 @@ module Make
     type template_data = Options.template_data sum_template_data
     type 'res template_data_fun =
       ('res Options.template_data_fun) sum_template_data_fun
-    let pre_template_data : (template_data -> 'res) -> 'res template_data_fun =
+    let pre_template_data ?default : (template_data -> 'res) -> 'res template_data_fun =
       fun (k : template_data  -> _) ?(variant_selection=default_variant_selection) () ->
-        Options.pre_template_data (fun data -> k (variant_selection, data))
-    let apply_template_data_fun (f : _ template_data_fun) =
+        Options.pre_template_data ?default (fun data -> k (variant_selection, data))
+    let apply_template_data_fun ?default (f : _ template_data_fun) =
         Options.apply_template_data_fun (f ())
     let default_template =
       fun args ->
