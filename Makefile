@@ -10,6 +10,8 @@ export ELIOM_TYPE_DIR = _server
 export ELIOM_SERVER_DIR = _server
 export ELIOM_CLIENT_DIR = _client
 
+FILES = files
+
 OPTS := -thread -package deriving-ocsigen
 PA_COPTS := -package deriving-ocsigen.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o
 PA_COPTS_TC := -package deriving-ocsigen.syntax_tc,js_of_ocaml.deriving.syntax_tc,camlp4.quotations.o
@@ -63,9 +65,12 @@ META: META.in Makefile .depend
 
 install: all META
 	ocamlfind install $(PKG_NAME) META pa_deriving_Form.cma pa_deriving_Form_tc.cma
+	cp -r $(FILES) `ocamlfind query $(PKG_NAME)`/$(FILES)
 	cp -r $(ELIOM_SERVER_DIR) `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR)
 	cp -r $(ELIOM_CLIENT_DIR) `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR)
 
 uninstall:
-	rm -rf `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR) `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR)
+	rm -rf `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR) \
+	       `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR) \
+	       `ocamlfind query $(PKG_NAME)`/$(FILES)
 	ocamlfind remove $(PKG_NAME)
