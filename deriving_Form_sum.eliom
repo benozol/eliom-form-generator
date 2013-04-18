@@ -83,7 +83,7 @@ module Make
     let pre_template_data ?default : (template_data -> 'res) -> 'res template_data_fun =
       fun (k : template_data  -> _) ?(variant_selection=default_variant_selection) () ->
         Options.pre_template_data ?default (fun data -> k (variant_selection, data))
-    let apply_template_data_fun ?default (f : _ template_data_fun) =
+    let apply_template_data_fun (f : _ template_data_fun) =
         Options.apply_template_data_fun (f ())
     let default_template =
       fun args ->

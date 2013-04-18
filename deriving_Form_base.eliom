@@ -281,7 +281,7 @@ module type Template_data = sig
   type template_data
   type 'res template_data_fun
   val pre_template_data : ?default:a -> (template_data -> 'res) -> 'res template_data_fun
-  val apply_template_data_fun : ?default:a -> 'res template_data_fun -> 'res
+  val apply_template_data_fun : 'res template_data_fun -> 'res
 end
 
 module Template_data_unit :
@@ -294,8 +294,8 @@ module Template_data_unit :
     type a = T.t
     type template_data = unit
     type 'res template_data_fun = 'res
-    let pre_template_data ?default k = k ()
-    let apply_template_data_fun ?default (f : _ template_data_fun) = f
+    let pre_template_data ?default:_ k = k ()
+    let apply_template_data_fun (f : _ template_data_fun) = f
   end
 
 module type Base_options = sig
