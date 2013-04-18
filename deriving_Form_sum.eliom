@@ -108,7 +108,7 @@ module Make
           let open Eliom_content.Html5.F in
           let content = [
             match param_names with
-              | `Param_names (prefix, param_names) ->
+              | `Param_names (_prefix, param_names) ->
                 let name = Options.project_selector_param_name param_names in
                   let options =
                     List.map2
@@ -147,7 +147,7 @@ module Make
                       | Some default ->
                         fst
                           (List.find
-                             (fun (variant_name,
+                             (fun (_variant_name,
                                    (module Variant : Variant with
                                       type enclosing_a = a and
                                       type enclosing_param_names = param_names and

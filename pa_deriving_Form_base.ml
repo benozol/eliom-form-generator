@@ -322,7 +322,7 @@ module Builder (Loc : Defs.Loc) = struct
                   fun $Helpers.record_pattern record_fields$ ->
                     Some ($lid:component_name$)
                 >>
-              | Type.Sum summands ->
+              | Type.Sum _summands ->
                 let match_cases =
                   List.map2
                     (fun variant_name variant_type_opt ->
@@ -421,7 +421,7 @@ module Builder (Loc : Defs.Loc) = struct
                 fun $Helpers.record_pattern record_fields$ ->
                   $to_tuple_expr$
               >>
-          | Type.Sum summands ->
+          | Type.Sum _summands ->
             let match_cases =
               List.map2
                 (fun variant_name variant_type_opt ->
@@ -458,12 +458,12 @@ module Builder (Loc : Defs.Loc) = struct
         in
         let of_repr_expr =
           match repr with
-            | Type.Record record_fields ->
+            | Type.Record _record_fields ->
               <:expr<
                 fun $pat:component_tuple_pattern$ ->
                   $Helpers.record_expr from_tuple_bindings$
               >>
-            | Type.Sum summands ->
+            | Type.Sum _summands ->
               let match_cases =
                 List.map2
                   (fun variant_name variant_type_opt ->

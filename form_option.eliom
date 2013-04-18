@@ -43,8 +43,8 @@
       let opt_component_configs_fun k ?none ?some arg = k (none, some) arg
       let default_template = default_template
       let variants : ((a, param_names, deep_config) Deriving_Form_sum.variant) list =
-        let project_None (none, some) = none
-        and project_Some (none, some) = some
+        let project_None (none, _) = none
+        and project_Some (_, some) = some
         in
         let module Component_None = struct
           type enclosing_a = a

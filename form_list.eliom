@@ -8,7 +8,7 @@
   let list_combined_suffix = Printf.sprintf "%s.%s" list_suffix list_elt_suffix
   let param_name_format prefix =
     let const =
-      prefix_concat prefix list_combined_suffix
+      prefix_concat ~prefix list_combined_suffix
     in
     Scanf.format_from_string const ""^^"%s[%d]%s"
 }}
@@ -16,7 +16,7 @@
   let rearrange_input_names prefix ?new_item list_node =
     let set_input_names new_index node =
       Firebug.console ## log_2 (Js.string "set_input_names", node);
-      let const = prefix_concat prefix list_combined_suffix in
+      let const = prefix_concat ~prefix list_combined_suffix in
       (* pattern of prefix:
          eliom_prefix ^_0 const ^_1 between ^_2 [N ^_3 ] ^ rest *)
       let name = node ## name in
@@ -90,7 +90,7 @@
     fun prefix a_node ->
       Lwt_js_events.async
         (fun () ->
-          lwt ev = Lwt_js_events.click a_node in
+          lwt _ = Lwt_js_events.click a_node in
           begin
             match
               parent_with_class form_list_list_item_class a_node,
@@ -100,7 +100,7 @@
                 Dom.removeChild list_node li_node;
                 rearrange_input_names prefix list_node;
                 form_inputs_set_required (find_form_node a_node)
-              | x,y ->
+              | _ ->
                 failwith "connect_remove: no list/item"
           end;
         Lwt.return ())
@@ -248,7 +248,7 @@
                                  (ksprintf Js.string ".%s" form_list_remove_button_class)
                         with
                           | [ a_node ] -> a_node
-                          | nodes -> failwith "add: remove button"
+                          | _ -> failwith "add: remove button"
                       in
                       connect_remove %prefix a_node;
                       rearrange_input_names %prefix ~new_item:fresh_li (to_dom %list);
