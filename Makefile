@@ -50,12 +50,20 @@ pa_deriving_Form_tc.cma: pa_deriving_Form_base.cmo pa_deriving_Form_tc.cmo
 	$(OCAMLC) -a -o $@ $^
 
 ifneq ($(MAKECMDGOALS),distclean)
+ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(MAKECMDGOALS),depend)
     include .depend
 endif
+endif
+endif
+
 .depend:
 	eliomdep -server $(SOURCE_FILES) > .depend
 	eliomdep -client $(SOURCE_FILES) >> .depend
-depend: | .depend
+
+depend:
+	eliomdep -server $(SOURCE_FILES) > .depend
+	eliomdep -client $(SOURCE_FILES) >> .depend
 
 clean:
 	rm -rf *.cmi *.cmo *.cma $(ELIOM_TYPE_DIR) $(ELIOM_SERVER_DIR) $(ELIOM_CLIENT_DIR) META
