@@ -31,30 +31,35 @@ end
 
 let form_string_default_template can_be_empty =
   let open Eliom_content.Html5.F in
-  Template.template
-    (fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[])
-      ~template_data:opt_pattern ~param_names component_renderings ->
-      assert (component_renderings = []);
-      let not_required_class_maybe, required_maybe =
-        if can_be_empty then
-          [component_not_required_class], []
-        else
-          [], [a_required `Required]
-      in
-      let pattern_maybe =
-        option_get ~default:[]
-          (option_map (fun p -> [a_pattern p])
-             opt_pattern)
-      in
-      let a =
-        let a = (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
-        a_class not_required_class_maybe :: required_maybe @ pattern_maybe @ a
-      in match param_names with
-        | `Param_names (_, param_names) -> [
-            string_input ~a ~name:param_names ?value:default ~input_type:`Text ();
-            input_marker;
-          ]
-        | `Display -> [ pcdata (option_get ~default:"" default) ])
+  fun arguments ->
+    Template.template
+      (fun ~is_outmost:_ ?submit:_ ~config ~template_data:opt_pattern
+        ~param_names ~component_renderings () ->
+          Pre_local_config.bind config
+            (fun ?label:_ ?annotation:_ ?default ?(a=[]) () ->
+              assert (component_renderings = []);
+              let not_required_class_maybe, required_maybe =
+                if can_be_empty then
+                  [component_not_required_class], []
+                else
+                  [], [a_required `Required]
+              in
+              let pattern_maybe =
+                option_get ~default:[]
+                  (option_map
+                     ~f:(fun p -> [a_pattern p])
+                     opt_pattern)
+              in
+              let a =
+                let a = (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
+                a_class not_required_class_maybe :: required_maybe @ pattern_maybe @ a
+              in match param_names with
+              | `Param_names (_, param_names) -> [
+                string_input ~a ~name:param_names ?value:default ~input_type:`Text ();
+                input_marker;
+              ]
+              | `Display -> [ pcdata (option_get ~default:"" default) ]))
+      arguments
 
 module Form_string =
   Make_atomic
@@ -82,18 +87,20 @@ module Form_int =
       let default_template =
         let open Eliom_content.Html5.F in
         Template.template
-          (fun ~is_outmost ?submit ?label ?annotation ?default
-            ?(a=[]) ~template_data ~param_names component_renderings ->
+          (fun ~is_outmost:_ ?submit:_ ~config ~template_data:_
+            ~param_names ~component_renderings () ->
               assert (component_renderings = []);
-              let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
-              match param_names with
-              | `Param_names (_, param_names) -> [
-                int_input ~a:(a_required `Required :: a)
-                  ~name:param_names ?value:default ~input_type:`Number ();
-                input_marker;
-              ]
-              | `Display ->
-                [ pcdata (option_get ~default:"" (option_map string_of_int default))])
+              Pre_local_config.bind config
+                (fun ?label:_ ?annotation:_ ?default ?(a=[]) () ->
+                  let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
+                  match param_names with
+                  | `Param_names (_, param_names) -> [
+                    int_input ~a:(a_required `Required :: a)
+                      ~name:param_names ?value:default ~input_type:`Number ();
+                    input_marker;
+                  ]
+                  | `Display ->
+                    [ pcdata (option_get ~default:"" (option_map ~f:string_of_int default))]))
      end)
 
 module Form_int64 =
@@ -109,38 +116,41 @@ module Form_int64 =
       let default_template =
         let open Eliom_content.Html5.F in
         Template.template
-          (fun ~is_outmost ?submit ?label ?annotation ?default
-            ?(a=[]) ~template_data:values_opt ~param_names component_renderings ->
+          (fun ~is_outmost:_ ?submit:_ ~config ~template_data:values_opt
+            ~param_names ~component_renderings () ->
               assert (component_renderings = []);
-              let required_label = "please select" in
-              match param_names with
-              | `Param_names (_, param_names) -> begin
-                match values_opt with
-                | None ->
-                  let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in [
-                    int64_input ~a:(a_required `Required :: a)
-                      ~name:param_names ?value:default ~input_type:`Number ();
-                    input_marker;
-                  ]
-                | Some values when values <> [] ->
-                  let a = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
-                  let options =
-                    List.map
-                      (function i, label, selected ->
-                        Option ([], i, Some label, selected))
-                      values
-                  in [
-                    int64_select ~a ~required:(pcdata required_label)
-                      ~name:param_names (List.hd options) (List.tl options);
-                    input_marker;
-                  ]
-                | Some values ->
-                  let a' = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
-                  let open Eliom_content.Html5.F.Raw in
-                  [ select ~a:(a_required `Required :: a')
-                      [option ~a:[a_value ""] (pcdata required_label)] ]
-              end
-              | `Display -> [pcdata (option_get ~default:"" (option_map Int64.to_string default))])
+            Pre_local_config.bind config
+              (fun ?label:_ ?annotation:_ ?default ?(a=[]) () ->
+                let required_label = "please select" in
+                match param_names with
+                | `Param_names (_, param_names) -> begin
+                  match values_opt with
+                  | None ->
+                    let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in [
+                      int64_input ~a:(a_required `Required :: a)
+                        ~name:param_names ?value:default ~input_type:`Number ();
+                      input_marker;
+                    ]
+                  | Some values ->
+                      if values <> [] then
+                        let a = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
+                        let options =
+                          List.map
+                            (function i, label, selected ->
+                              Option ([], i, Some label, selected))
+                            values
+                        in [
+                          int64_select ~a ~required:(pcdata required_label)
+                            ~name:param_names (List.hd options) (List.tl options);
+                          input_marker;
+                        ]
+                      else
+                        let a' = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
+                        let open Eliom_content.Html5.F.Raw in
+                        [ select ~a:(a_required `Required :: a')
+                            [option ~a:[a_value ""] (pcdata required_label)] ]
+                end
+                | `Display -> [pcdata (option_get ~default:"" (option_map ~f:Int64.to_string default))]))
      end)
 
 module Form_unit =

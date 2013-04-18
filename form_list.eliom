@@ -118,8 +118,8 @@
         type 'res template_data_fun = 'res and
         type config =
           ( Form.a list, Form.param_names list_param_names,
-            Form.config option, unit
-          ) Config.t and
+            unit, Form.config option
+          ) config' and
         type ('arg, 'res) opt_component_configs_fun =
           ?elt:Form.config -> 'arg -> 'res =
     functor (Form : Form) -> struct
@@ -138,31 +138,36 @@
           (snd (Form.params_type' list_elt_suffix))
       let params_type prefix =
         snd (params_type' (prefix^param_name_root))
-      type config = (a, param_names, deep_config, template_data) Config.t
+      type config = (a, param_names, template_data, deep_config) config'
       let component_names = []
 
       let pre_render : bool -> button_content option -> param_names or_display -> config -> form_content =
         let sub_config config sub_default_opt =
           let config =
             let default_config =
-              { Config.local = Config.local_zero ;
+              { local = Local_config.mk ();
                 deep = Form.default_deep_config }
             in
             option_get ~default:default_config
-              config.Config.deep
+              config.deep
           in
           { config with
-            Config.local = { config.Config.local with
-              Config.default =
-                option_or [
-                  sub_default_opt;
-                  config.Config.local.Config.default
-                ] } }
+            local = Local_config.({
+              config.local with
+                pre = {
+                  config.local.pre with
+                    default = option_or [
+                      sub_default_opt;
+                      config.local.pre.default
+                    ]
+                }
+            })
+          }
         in
         fun is_outmost submit param_names config ->
         match param_names with
           | `Display ->
-            begin match config.Config.local.Config.default with
+            begin match Local_config.(config.local.pre.default) with
               | None -> []
               | Some default ->
                   let open Eliom_content.Html5.F in
@@ -202,7 +207,7 @@
                      in
                      ignore {unit{ connect_remove %prefix (to_dom %remove_a) }};
                      li :: sofar)
-                   (option_get ~default:[] config.Config.local.Config.default)
+                   (option_get ~default:[] Local_config.(config.local.pre.default))
                    [])
             in
             let add_a = Eliom_content.Html5.D.Raw.a [pcdata "Add"] in
@@ -257,29 +262,31 @@
       let opt_component_configs_fun k ?elt = k elt
 
       let display ~value =
-        Config.local_fun
+        Local_config.fun_
           (fun local () ->
-            let local = { local with Config.default = Some value } in
+            let local = Local_config.({ local with
+              pre = { local.pre with default = Some value }
+            }) in
             opt_component_configs_fun
-              (fun deep param_names ->
+              (fun deep () ->
                 pre_render true None
                   `Display
-                  { Config.local ; deep }))
+                  { local ; deep }))
       let content ?submit =
-        Config.local_fun
+        Local_config.fun_
           (fun local () ->
             opt_component_configs_fun
               (fun deep () ->
                 fun param_names ->
                   pre_render true submit
                     (`Param_names ("", param_names))
-                    { Config.local ; deep }))
+                    { local ; deep }))
       let config =
-        Config.local_fun
+        Local_config.fun_
           (fun local () ->
             opt_component_configs_fun
               (fun deep () ->
-                { Config.local ; deep }))
+                { local ; deep }))
 
       let to_repr = List.map Form.to_repr
       let of_repr = List.map Form.of_repr

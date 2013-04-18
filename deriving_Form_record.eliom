@@ -23,8 +23,9 @@ module Make :
       type template_data = Options.template_data and
       type 'res template_data_fun = 'res Options.template_data_fun and
       type config =
-        ( Options.a, Options.param_names, Options.deep_config, Options.template_data
-        ) Config.t and
+        ( Options.a, Options.param_names,
+          Options.template_data, Options.deep_config
+        ) config' and
       type ('arg, 'res) opt_component_configs_fun =
         ('arg, 'res) Options.opt_component_configs_fun
 =
@@ -32,7 +33,7 @@ module Make :
 
     include Make_base (Options)
 
-    let field_renderings submit param_names { Config.local ; deep } =
+    let field_renderings submit param_names { local ; deep } =
       List.map2
         (fun field_name
           (module Field : Field with
@@ -42,20 +43,20 @@ module Make :
           let config =
             let config_from_deep =
               option_get
-                ~default:{ Config.local = Config.local_zero ; deep = Field.default_deep_config }
+                ~default:{ local = Local_config.mk () ; deep = Field.default_deep_config }
                 (Field.project_config deep)
             in
             let local =
               let default_local =
                 let label = Some [pcdata (default_label_of_component_name field_name)] in
-                let default = option_bind Field.project_default local.Config.default in
+                let default = option_bind Field.project_default Local_config.(local.pre.default) in
                 let template_data = Some (Field.apply_template_data_fun (Field.pre_template_data identity)) in
-                { Config.label ; default ; template_data ;
-                  template = None ; annotation = None ; classes = None }
+                Local_config.mk' ~label ~default ~template_data
+                  ~annotation:None ~a:None ~template:None ()
               in
-              Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
+              Local_config.option_or_by_field [ config_from_deep.local ; default_local ]
             in
-            { config_from_deep with Config.local }
+            { config_from_deep with local }
           in
           let content =
             let param_names =
@@ -69,55 +70,66 @@ module Make :
             Field.pre_render false submit param_names config
           in
           Component_rendering.mk
-            ?label:Config.(config.local.label)
-            ?annotation:Config.(config.local.annotation)
+            ?label:Local_config.(config.local.pre.label)
+            ?annotation:Local_config.(config.local.pre.annotation)
             ~content ())
         Options.component_names
         Options.fields
 
     let config =
-      Config.local_fun
+      Local_config.fun_
         (fun local () ->
           Options.opt_component_configs_fun
             (fun deep () ->
-              { Config.local ; deep }))
+              { local ; deep }))
 
     let pre_render is_outmost submit param_names config =
-      let { Config.label ; annotation ; default ; template ; classes ; template_data = template_data_opt } = config.Config.local in
-      let template_data = option_get' ~default:(fun () -> apply_template_data_fun template_data) template_data_opt in
-      let template = option_get ~default:Options.default_template template in
-      let a =
-        Some [Eliom_content.Html5.F.a_class
-                (form_class :: form_record_class ::
-                   option_get ~default:[] classes)]
-      in
-      set_required_for_outmost ~is_outmost
-        (template
-           (Template.arguments
-              ~is_outmost ?submit ?label ?annotation
-              ?default ~param_names ~template_data ?a
-              (field_renderings submit param_names config)))
+      Local_config.bind config.local
+        (fun ?label ?annotation ?default ?(a=[]) ?template ?template_data:template_data' () ->
+          let template_data =
+            let default () =
+              apply_template_data_fun (pre_template_data ?default identity)
+            in
+            option_get' ~default template_data'
+          in
+          let template = option_get ~default:Options.default_template template in
+          let a =
+            Some (Eliom_content.Html5.F.a_class
+                     [form_class; form_record_class]
+                     :: a)
+          in
+          set_required_for_outmost ~is_outmost
+            (template
+               (Template.arguments
+                  ~is_outmost ?submit
+                  ~config:(Pre_local_config.mk ?label ?annotation ?default ?a ())
+                  ~param_names ~template_data
+                  ~component_renderings:(field_renderings submit param_names config)
+                  ())))
 
 
     let content ?submit =
-      Config.local_fun
+      Local_config.fun_
         (fun local () ->
           Options.opt_component_configs_fun
             (fun deep () ->
               fun param_names ->
                 pre_render true submit
                   (`Param_names ("", param_names))
-                  { Config.local ; deep }))
+                  { local ; deep }))
 
     let display ~value =
-      Config.local_fun
+      Local_config.fun_
         (fun local () ->
-          let local = { local with Config.default = Some value } in
+          let local = Local_config.({
+            local with pre =
+              { local.pre with default = Some value }
+          }) in
           Options.opt_component_configs_fun
             (fun deep () ->
               pre_render true None
                 `Display
-                { Config.local ; deep }))
+                { local ; deep }))
 
   end
 }}

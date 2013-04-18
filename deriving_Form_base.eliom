@@ -53,15 +53,38 @@ end
 
 type 'param_names or_display = [ `Display | `Param_names of string * 'param_names ]
 
+
+module Pre_local_config = struct
+  type 'a t = {
+    label : form_content option;
+    annotation : form_content option;
+    default : 'a option;
+    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
+  }
+  let mk ?label ?annotation ?default ?a () =
+    { label ; annotation ; default ; a }
+  let bind x f =
+    let { label ; annotation ; default ; a } = x in
+    f ?label ?annotation ?default ?a ()
+  let rec option_or_by_field = function
+    | [] -> mk ()
+    | c1 :: [] -> c1
+    | c1 :: c2 :: rest ->
+      let here = {
+        label = option_or [c1.label; c2.label];
+        annotation = option_or [c1.annotation; c2.annotation];
+        default = option_or [c1.default; c2.default];
+        a = option_or [c1.a; c2.a];
+      } in
+      option_or_by_field (here :: rest)
+end
+
 module Template = struct
 
   type ('a, 'param_names, 'template_data) arguments = {
     is_outmost : bool ;
     submit : button_content option ;
-    label : form_content option ;
-    annotation : form_content option ;
-    default : 'a option ;
-    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
+    config : 'a Pre_local_config.t;
     template_data : 'template_data ;
     param_names : 'param_names or_display ;
     component_renderings : Component_rendering.t list ;
@@ -70,103 +93,163 @@ module Template = struct
   type ('a, 'param_names, 'template_data) t =
     ('a, 'param_names, 'template_data) arguments -> form_content
 
-  let arguments
-      ~is_outmost ?submit ?label ?annotation ?default ?a
-      ~template_data ~param_names component_renderings =
-    { is_outmost ; submit ; label ; annotation ; default ; a ;
-      template_data ; param_names ; component_renderings }
+  let arguments ~is_outmost ?submit ?(config=Pre_local_config.mk ()) ~template_data
+      ~param_names ~component_renderings () =
+    { is_outmost ; submit ; config ; template_data ;
+      param_names ; component_renderings }
 
-  let template f =
-    fun { is_outmost ; submit ; label ; annotation ; default ; a ;
-          template_data ; param_names ; component_renderings } ->
-      f ~is_outmost ?submit ?label ?annotation ?default ?a
-        ~template_data ~param_names component_renderings
+  let template f arguments =
+    let { is_outmost ; submit ; config ; template_data ;
+          param_names ; component_renderings }
+        = arguments
+    in
+      f ~is_outmost ?submit ~config ~template_data
+        ~param_names ~component_renderings ()
 end
+
+module Local_config = struct
+
+  type 'a pre = 'a Pre_local_config.t = {
+    label : form_content option;
+    annotation : form_content option;
+    default : 'a option;
+    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
+  }
+
+  type ('a, 'param_names, 'template_data) t = {
+    pre : 'a Pre_local_config.t;
+    template : ('a, 'param_names, 'template_data) Template.t option;
+    template_data : 'template_data option;
+  }
+
+  type ('a, 'param_names, 'template_data, 'arg, 'res) fun_ =
+    ?label:form_content ->
+    ?annotation:form_content ->
+    ?default:'a ->
+    ?a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list ->
+    ?template:('a, 'param_names, 'template_data) Template.t ->
+    ?template_data:'template_data ->
+    'arg -> 'res
+
+  let fun_ : _ -> (_, _, _, unit, _) fun_ =
+    fun k ?label ?annotation ?default ?a ?template ?template_data arg ->
+      let pre = Pre_local_config.({ label ; annotation ; default ; a }) in
+      k { pre ; template; template_data } arg
+
+  let mk ?label ?annotation ?default ?a ?template ?template_data () =
+    fun_ constant ?label ?annotation ?default ?a ?template ?template_data ()
+  let mk' ~label ~annotation ~default ~a ~template ~template_data () =
+    fun_ constant ?label ?annotation ?default ?a ?template ?template_data ()
+
+  let bind { pre = { label ; annotation ; default ; a } ; template ; template_data } k =
+    k ?label ?annotation ?default ?a ?template ?template_data ()
+
+  let rec option_or_by_field = function
+    | [] -> mk ()
+    | [c] -> c
+    | c1 :: c2 :: rest ->
+      let here = {
+        pre = Pre_local_config.option_or_by_field [c1.pre; c2.pre];
+        template = option_or [c1.template; c2.template];
+        template_data = option_or [c1.template_data; c2.template_data];
+      } in
+      option_or_by_field (here :: rest)
+
+end
+
+type ('a, 'param_names, 'template_data, 'deep_config) config' = {
+  local : ('a, 'param_names, 'template_data) Local_config.t;
+  deep : 'deep_config;
+}
 
 let template_concat : (_, _, _) Template.t =
   fun arguments ->
     Template.template
       (let open Eliom_content.Html5.F in
-       fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[]) ~template_data
-         ~param_names component_renderings ->
-           [ div ~a:(a_class [form_class] :: a)
-               (List.map
-                  (fun { Component_rendering.label ; selector ; content ; annotation ; a } ->
-                    div ?a [
-                      div (option_get ~default:[] selector) ;
-                      div (option_get ~default:[] label) ;
-                      div content ;
-                      div (option_get ~default:[] annotation) ;
-                    ])
-                  component_renderings) ])
+       fun ~is_outmost:_ ?submit:_ ~config ~template_data:_
+         ~param_names:_ ~component_renderings () ->
+           Pre_local_config.bind config
+             (fun ?label:_ ?annotation:_ ?default:_ ?(a=[]) () ->
+               [ div ~a:(a_class [form_class] :: a)
+                   (List.map
+                      (fun { Component_rendering.label ; selector ; content ; annotation ; a } ->
+                        div ?a [
+                          div (option_get ~default:[] selector) ;
+                          div (option_get ~default:[] label) ;
+                          div content ;
+                          div (option_get ~default:[] annotation) ;
+                        ])
+                      component_renderings) ]))
       arguments
 
 let template_table =
   fun arguments ->
     Template.template
       (let open Eliom_content.Html5.F in
-       fun ~is_outmost ?submit ?label ?annotation ?default ?(a=[]) ~template_data
-         ~param_names field_renderings ->
-           let captions =
-             maybe_get_option_map is_outmost label
-               (fun label ->
-                 [tr ~a:[a_class ["field"]]
-                     [td ~a:[a_class ["form_label"]; a_colspan 3] label]])
-           in
-           let annotations =
-             maybe_get_option_map is_outmost annotation
-               (fun annotation ->
-                 [tr ~a:[a_class ["field"]]
-                     [td ~a:[a_class ["form_annotation"]; a_colspan 3] annotation]])
-           in
-           let submits =
-             maybe_get_option_map is_outmost submit
-               (fun submit ->
-                 [tr ~a:[a_class ["field"]]
-                     [td [];
-                      td ~a:[a_class ["form_submit"]; a_colspan 3]
-                        [button ~button_type:`Submit submit];
-                      td []]])
-           in
-           let fields =
-             List.map from_some @@
-             List.filter is_some @@
-             List.map
-               (fun { Component_rendering.label ; selector ; content ; annotation ; a } ->
-                 if selector = None && annotation = None && content = [] then
-                   None
-                 else
-                   let a = option_get ~default:[] a in
-                   let label =
-                     td ~a:[a_class ["label"]]
-                       (option_get ~default:[] label)
-                   in
-                   let selector =
-                     option_to_list
-                       (option_map
-                          (td ~a:[a_class ["selector"]])
-                          selector)
-                   in
-                   let content =
-                     td ~a:[a_class ["content"]] content
-                   in
-                   let annotation =
-                     option_to_list
-                       (option_map
-                          (td ~a:[a_class ["annotation"]])
-                          annotation)
-                   in
-                   Some (tr ~a:(a_class ["field"] :: a)
-                           (selector @ label :: content :: annotation)))
-               field_renderings
-           in
-           let contents = captions @ fields @ annotations @ submits in
-           let outmost_class = if is_outmost then ["outmost"] else [] in
-           match contents with
-           | [] -> []
-           | hd :: tl ->
-             [ table ~a:(a_class (["form"; form_class] @ outmost_class) :: a)
-                 hd tl ])
+       fun ~is_outmost ?submit ~config ~template_data:_ ~param_names:_
+         ~component_renderings:field_renderings () ->
+           Pre_local_config.bind config
+             (fun ?label ?annotation ?default:_ ?(a=[]) () ->
+               let captions =
+                 maybe_get_option_map is_outmost label
+                   (fun label ->
+                     [tr ~a:[a_class ["field"]]
+                         [td ~a:[a_class ["form_label"]; a_colspan 3] label]])
+               in
+               let annotations =
+                 maybe_get_option_map is_outmost annotation
+                   (fun annotation ->
+                     [tr ~a:[a_class ["field"]]
+                         [td ~a:[a_class ["form_annotation"]; a_colspan 3] annotation]])
+               in
+               let submits =
+                 maybe_get_option_map is_outmost submit
+                   (fun submit ->
+                     [tr ~a:[a_class ["field"]]
+                         [td [];
+                          td ~a:[a_class ["form_submit"]; a_colspan 3]
+                            [button ~button_type:`Submit submit];
+                          td []]])
+               in
+               let fields =
+                 List.map from_some @@
+                   List.filter is_some @@
+                   List.map
+                   (fun { Component_rendering.label ; selector ; content ; annotation ; a } ->
+                     if selector = None && annotation = None && content = [] then
+                       None
+                     else
+                       let a = option_get ~default:[] a in
+                       let label =
+                         td ~a:[a_class ["label"]]
+                           (option_get ~default:[] label)
+                       in
+                       let selector =
+                         option_to_list
+                           (option_map
+                              ~f:(td ~a:[a_class ["selector"]])
+                              selector)
+                       in
+                       let content =
+                         td ~a:[a_class ["content"]] content
+                       in
+                       let annotation =
+                         option_to_list
+                           (option_map
+                              ~f:(td ~a:[a_class ["annotation"]])
+                              annotation)
+                       in
+                       Some (tr ~a:(a_class ["field"] :: a)
+                               (selector @ label :: content :: annotation)))
+                   field_renderings
+               in
+               let contents = captions @ fields @ annotations @ submits in
+               let outmost_class = if is_outmost then ["outmost"] else [] in
+               match contents with
+               | [] -> []
+               | hd :: tl ->
+                 [ table ~a:(a_class (["form"; form_class] @ outmost_class) :: a)
+                     hd tl ]))
       arguments
 
 let default_template =
@@ -183,46 +266,6 @@ let default_label_of_component_name s =
   let s = Str.global_replace (Str.regexp "_") " " s in
   String.capitalize s
 
-module Config = struct
-  type ('a, 'param_names, 'deep_config, 'template_data) local = {
-    label : form_content option;
-    annotation : form_content option;
-    default : 'a option;
-    template : ('a, 'param_names, 'template_data) Template.t option;
-    template_data : 'template_data option;
-    classes : string list option;
-  }
-  let local_zero = {
-    label = None; annotation = None; default = None;
-    template = None ; template_data = None; classes = None;
-  }
-  let rec option_or_by_field = function
-    | [] -> local_zero
-    | c1 :: [] -> c1
-    | c1 :: c2 :: rest ->
-      option_or_by_field
-        ({ label = option_or [c1.label; c2.label];
-           annotation = option_or [c1.annotation; c2.annotation];
-           default = option_or [c1.default; c2.default];
-           template = option_or [c1.template; c2.template];
-           template_data = option_or [c1.template_data; c2.template_data];
-           classes = option_or [c1.classes; c2.classes];
-         } :: rest)
-  type ('a, 'param_names, 'deep_config, 'template_data) t = {
-    local : ('a, 'param_names, 'deep_config, 'template_data) local;
-    deep : 'deep_config;
-  }
-  type ('a, 'param_names, 'deep_config, 'template_data, 'arg, 'res) local_fun =
-    ?label:form_content ->
-    ?annotation:form_content ->
-    ?default:'a ->
-    ?classes:string list ->
-    ?template:('a, 'param_names, 'template_data) Template.t ->
-    ?template_data:'template_data ->
-    'arg -> 'res
-  let local_fun k ?label ?annotation ?default ?classes ?template ?template_data arg =
-    k { label ; default ; annotation ; template ; template_data ; classes } arg
-end
 
 (******************************************************************************)
 
@@ -273,26 +316,32 @@ end
 module type Pre_form = sig
   include Base_options
   val pre_render : bool -> button_content option -> param_names or_display ->
-    (a, param_names, deep_config, template_data) Config.t -> form_content
+    (a, param_names, template_data, deep_config) config' -> form_content
 end
 
 module type Form = sig
   include Pre_form
-  type config = (a, param_names, deep_config, template_data) Config.t
+  type config = (a, param_names, template_data, deep_config) config'
   val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val template_data : template_data template_data_fun
   val content :
     ?submit:button_content ->
-    ( a, param_names, deep_config, template_data, unit,
-      (unit, param_names -> form_content) opt_component_configs_fun
-    ) Config.local_fun
+    ( a, param_names, template_data,
+      unit,
+      (unit,
+       param_names -> form_content) opt_component_configs_fun
+    ) Local_config.fun_
   val display :
     value:a ->
-    ( a, param_names, deep_config, template_data, unit,
-      (unit, form_content) opt_component_configs_fun ) Config.local_fun
+    ( a, param_names, template_data,
+      unit,
+      (unit,
+       form_content) opt_component_configs_fun ) Local_config.fun_
   val config :
-    ( a, param_names, deep_config, template_data, unit,
-      (unit, config) opt_component_configs_fun ) Config.local_fun
+    ( a, param_names, template_data,
+      unit,
+      (unit,
+       config) opt_component_configs_fun ) Local_config.fun_
   val get_handler : (a -> 'post -> 'res) -> (repr -> 'post -> 'res)
   val post_handler : ('get -> a -> 'res) -> ('get -> repr -> 'res)
 end
@@ -307,7 +356,7 @@ module type Field = sig
   val project_default : enclosing_a -> a option
   val project_param_names : enclosing_param_names -> param_names
   val project_config : enclosing_deep_config ->
-    (a, param_names, deep_config, template_data) Config.t option
+    (a, param_names, template_data, deep_config) config' option
   val prefix : string -> string
 end
 
@@ -322,7 +371,7 @@ module Make_base (Options : Base_options) = struct
   include Options
   let params_type prefix = snd (params_type' (prefix^param_name_root))
   let template_data = pre_template_data identity
-  type config = (a, param_names, deep_config, template_data) Config.t
+  type config = (a, param_names, template_data, deep_config) config'
   let get_handler f =
     fun repr post ->
       f (of_repr repr) post

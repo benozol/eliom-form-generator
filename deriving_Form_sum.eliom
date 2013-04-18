@@ -36,9 +36,10 @@ module Make
         type 'res template_data_fun =
           ('res Options.template_data_fun) sum_template_data_fun and
         type config =
-          ( Options.a, Options.param_names, Options.deep_config,
-            variant_selection * Options.template_data
-          ) Config.t and
+          ( Options.a, Options.param_names,
+            variant_selection * Options.template_data,
+            Options.deep_config
+          ) config' and
         type ('arg, 'res) opt_component_configs_fun =
           ('arg, 'res) Options.opt_component_configs_fun
 = functor (Options : Sum_options) -> struct
@@ -46,9 +47,11 @@ module Make
   let template_arguments_to_options :
       (_, _, Options.template_data sum_template_data) Template.arguments ->
       (_, _, Options.template_data) Template.arguments =
-    fun { Template.is_outmost; submit; label; annotation; default;
-          a; template_data = (variant_selection, template_data);
-          param_names; component_renderings } ->
+    fun { Template.is_outmost; submit;
+          config = { Pre_local_config.label; annotation; default; a; };
+          template_data = (variant_selection, template_data);
+          param_names; component_renderings
+        } ->
       let a =
         let variant_selection_class =
           match variant_selection with
@@ -57,8 +60,9 @@ module Make
         let classes =[form_class; form_sum_class; variant_selection_class] in
         Some (Eliom_content.Html5.F.a_class classes :: option_get ~default:[] a)
       in
-      { Template.is_outmost; submit; label; annotation; default;
-        a; param_names; component_renderings; template_data }
+      { Template.is_outmost; submit;
+        config = Pre_local_config.({ label; annotation; default; a });
+        param_names; component_renderings; template_data }
 
   type template_data' = Options.template_data sum_template_data
   type 'res template_data_fun' =
@@ -89,14 +93,14 @@ module Make
   include Make_base (Options')
 
   let config =
-    Config.local_fun
+    Local_config.fun_
       (fun local () ->
         Options.opt_component_configs_fun
           (fun deep () ->
-            { Config.local ; deep }))
+            { local ; deep }))
 
   let variant_renderings submit (param_names : param_names or_display)
-      { Config.local ; deep } variant_selection =
+      { local ; deep } variant_selection =
     let first =
       match variant_selection with
         | `Drop_down ->
@@ -116,7 +120,7 @@ module Make
                       ->
                         let selected =
                           option_get_map ~default:false ~f:Variant.is_constructor
-                            local.Config.default
+                            Local_config.(local.pre.default)
                         in
                         let label = pcdata (default_label_of_component_name variant_name) in
                         Eliom_content.Html5.D.Option ([], variant_name, Some label, selected))
@@ -138,7 +142,7 @@ module Make
                   div ~a:[a_class ["contains_select"]] [ select ; input_marker ]
               | `Display ->
                   let variant_name =
-                    match local.Config.default with
+                    match Local_config.(local.pre.default) with
                       | None -> ""
                       | Some default ->
                         fst
@@ -167,27 +171,26 @@ module Make
            let config =
              let config_from_deep =
                option_get
-                 ~default:{ Config.local = Config.local_zero ;
+                 ~default:{ local = Local_config.mk ();
                             deep = Variant.default_deep_config }
                  (Variant.project_config deep)
              in
              let local =
                let default_local =
-                 (* let label = Some [pcdata (default_label_of_component_name variant_name)] in *)
-                 let default = option_bind Variant.project_default local.Config.default in
+                 let default = option_bind Variant.project_default Local_config.(local.pre.default) in
                  let template_data =
                    Some (Variant.apply_template_data_fun (Variant.pre_template_data identity))
                  in
-                 { Config.default ; label = None ;
-                   template = None ; annotation = None ;
-                   template_data ; classes = None }
+                 Local_config.mk' ~label:None ~annotation:None ~default
+                   ~a:None ~template:None ~template_data ()
                in
-               Config.option_or_by_field [ config_from_deep.Config.local ; default_local ]
+               Local_config.option_or_by_field [ config_from_deep.local ; default_local ]
              in
-             { config_from_deep with Config.local }
+             { config_from_deep with local }
            in
            let is_constructor =
-             option_get_map ~default:false ~f:Variant.is_constructor local.Config.default
+             option_get_map ~default:false ~f:Variant.is_constructor
+               Local_config.(local.pre.default)
            in
            if param_names = `Display && not is_constructor then
              None
@@ -213,66 +216,72 @@ module Make
                Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
              ] in
              Some (Component_rendering.mk ~a ?selector
-                     ?label:Config.(config.local.label)
-                     ?annotation:Config.(config.local.annotation)
+                     ?label:Local_config.(config.local.pre.label)
+                     ?annotation:Local_config.(config.local.pre.annotation)
                      ~content ()))
          Options.component_names
          Options.variants)
 
 
   let pre_render is_outmost submit param_names config =
-    let { Config.label ; annotation ; default ;
-          template ; template_data = template_data_opt } =
-      config.Config.local in
-    let variant_selection, _ as template_data =
-      option_get' ~default:(fun () -> apply_template_data_fun (pre_template_data identity)) template_data_opt
-    in
-    let template =
-      option_get
-        ~default:(fun args ->
-          Options.default_template
-            (template_arguments_to_options args))
-        template
-    in
-    let component_renderings = variant_renderings submit param_names config variant_selection in
-    let a =
-      match default with
-        | Some default ->
-          let variant_name, _ =
-            List.find
-              (fun (_, variant) ->
-                 let module Variant = (val (variant : (Options.a, Options.param_names, Options.deep_config) variant)) in
-                 Variant.is_constructor default)
-              (List.combine Options.component_names Options.variants)
-          in
-          [ Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute
-              variant_name ]
-        | None -> []
-    in
-    set_required_for_outmost ~is_outmost
-      (template
-         (Template.arguments
-            ~is_outmost ?submit ?label ?annotation ?default ~a
-            ~param_names ~template_data component_renderings))
+    Local_config.bind config.local
+      (fun ?label ?annotation ?default ?(a=[]) ?template ?template_data:template_data' () ->
+        let variant_selection, _ as template_data =
+          let default () = apply_template_data_fun (pre_template_data identity) in
+          option_get' ~default template_data'
+        in
+        let template =
+          option_get
+            ~default:(fun args ->
+              Options.default_template
+                (template_arguments_to_options args))
+            template
+        in
+        let component_renderings = variant_renderings submit param_names config variant_selection in
+        let a =
+          match default with
+          | Some default ->
+            let variant_name, _ =
+              List.find
+                (fun (_, variant) ->
+                  let module Variant = (val (variant : (Options.a, Options.param_names, Options.deep_config) variant)) in
+                  Variant.is_constructor default)
+                (List.combine Options.component_names Options.variants)
+            in
+            Eliom_content.Html5.Custom_data.attrib
+              form_sum_variant_attribute
+              variant_name
+              :: a
+          | None -> a
+        in
+        set_required_for_outmost ~is_outmost
+          (template
+             (Template.arguments
+                ~is_outmost ?submit
+                ~config:(Pre_local_config.mk ?label ?annotation ?default ~a ())
+                ~param_names ~template_data ~component_renderings ())))
 
 
-  let content ?submit : (_, _, _, _, _, _) Config.local_fun =
-    Config.local_fun
+  let content ?submit =
+    Local_config.fun_
       (fun local () ->
         Options.opt_component_configs_fun
           (fun deep () ->
             fun param_names ->
               pre_render true submit
                 (`Param_names ("", param_names))
-                { Config.local ; deep }))
+                { local ; deep }))
 
   let display ~value =
-    Config.local_fun
+    Local_config.fun_
       (fun local () ->
-        let local = { local with Config.default = Some value } in
+        let local = Local_config.({
+          local with
+            pre = { local.pre with default = Some value }
+        }) in
         Options.opt_component_configs_fun
           (fun deep () ->
-            pre_render true None `Display { Config.local ; deep }))
+            pre_render true None `Display { local ; deep }))
 
 end
 }}
