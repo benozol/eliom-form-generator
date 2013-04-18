@@ -21,7 +21,7 @@ PA_COPTS_TC := -package deriving-ocsigen.syntax_tc,js_of_ocaml.deriving.syntax_t
 SOURCE_FILES=$(wildcard *.eliom)
 cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
 
-all: pa_deriving_Form.cma pa_deriving_Form_tc.cma $(ELIOM_SERVER_DIR)/deriving_Form.cmo $(ELIOM_CLIENT_DIR)/deriving_Form.cmo
+all: pa_deriving_Form.cma pa_deriving_Form_tc.cma $(ELIOM_SERVER_DIR)/deriving_Form.cmo $(ELIOM_CLIENT_DIR)/deriving_Form.cmo META
 
 $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
 	$(ELIOMC) -infer -package js_of_ocaml $(PA_COPTS) $<
@@ -56,14 +56,16 @@ endif
 depend: | .depend
 
 clean:
-	rm -rf *.cmi *.cmo *.cma $(ELIOM_TYPE_DIR) $(ELIOM_SERVER_DIR) $(ELIOM_CLIENT_DIR)
+	rm -rf *.cmi *.cmo *.cma $(ELIOM_TYPE_DIR) $(ELIOM_SERVER_DIR) $(ELIOM_CLIENT_DIR) META
 distclean: clean
 	rm -rf .depend
 
 META: META.in Makefile .depend
-	sed -s 's/@@CMO_FILES@@/$(call cmo_files, -server)/g' $< > $@
+	sed -e 's/@@SERVER_CMO_FILES@@/$(call cmo_files,-server)/g' \
+            -e 's/@@CLIENT_CMO_FILES@@/$(call cmo_files,-client)/g' \
+	  $< > $@
 
-install: all META
+install: all
 	ocamlfind install $(PKG_NAME) META pa_deriving_Form.cma pa_deriving_Form_tc.cma
 	cp -r $(FILES) `ocamlfind query $(PKG_NAME)`/$(FILES)
 	cp -r $(ELIOM_SERVER_DIR) `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR)
