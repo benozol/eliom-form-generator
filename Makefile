@@ -1,7 +1,9 @@
 PKG_NAME := deriving-eliom-form
-ELIOMC = eliomc
-JS_OF_ELIOM = js_of_eliom
-OCAMLC = ocamlfind ocamlc
+
+WARNINGS = -w +0..29
+ELIOMC = eliomc $(WARNINGS)
+JS_OF_ELIOM = js_of_eliom $(WARNINGS)
+OCAMLC = ocamlfind ocamlc $(WARNINGS)
 
 SERVER_DIR = server
 CLIENT_DIR = client
