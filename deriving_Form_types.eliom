@@ -1,4 +1,5 @@
 {shared{
+  open Deriving_Form_utils
   open Deriving_Form_base
 
 module type Atomic_options = sig

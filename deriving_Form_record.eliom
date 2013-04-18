@@ -1,5 +1,5 @@
 {shared{
-
+open Deriving_Form_utils
 open Deriving_Form_base
 
 type ('a, 'param_names, 'deep_config) field =

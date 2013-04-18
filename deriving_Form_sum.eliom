@@ -1,5 +1,6 @@
 {shared{
 
+open Deriving_Form_utils
 open Deriving_Form_base
 
 type selector_param_name = [`One of string] Eliom_parameter.param_name

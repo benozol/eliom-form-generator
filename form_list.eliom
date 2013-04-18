@@ -1,6 +1,7 @@
 
 
 {shared{
+  open Deriving_Form_utils
   open Deriving_Form_base
   let list_suffix = "list"
   let list_elt_suffix = "elt"
