@@ -50,9 +50,9 @@
           type enclosing_a = a
           type enclosing_param_names = param_names
           type enclosing_deep_config = deep_config
-          let project_default =
+          let project_value =
             function | None -> Some () | Some _ -> None
-          let _ = project_default
+          let _ = project_value
           let project_param_names param_names =
             project_None (snd param_names)
           let _ = project_param_names
@@ -67,11 +67,11 @@
           type enclosing_a = a
           type enclosing_param_names = param_names
           type enclosing_deep_config = deep_config
-          let project_default =
+          let project_value =
             function
             | None -> None
             | Some component -> Some component
-          let _ = project_default
+          let _ = project_value
           let project_param_names param_names =
             project_Some (snd param_names)
           let _ = project_param_names

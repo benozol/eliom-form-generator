@@ -69,7 +69,7 @@
              (Js.string "input,select")));
     debug "counter: %d" !counter;
     option_iter
-      (fun new_item ->
+      ~f:(fun new_item ->
         Js.Opt.iter
           (Dom_html.CoerceTo.element new_item)
           (fun new_item ->
@@ -129,7 +129,7 @@
       type deep_config = Form.config option
       let default_deep_config = None
       include Template_data_unit (struct type t = a end)
-      let template_data = ()
+      let template_data ~value:_ = ()
       let prefix_elt prefix = prefix_concat ~prefix list_suffix
       let params_type' prefix =
         prefix,
@@ -145,7 +145,7 @@
         let sub_config config sub_default_opt =
           let config =
             let default_config =
-              { local = Local_config.mk ();
+              { local = Local_config.zero;
                 deep = Form.default_deep_config }
             in
             option_get ~default:default_config
@@ -156,9 +156,9 @@
               config.local with
                 pre = {
                   config.local.pre with
-                    default = option_or [
-                      sub_default_opt;
-                      config.local.pre.default
+                    value = option_or [
+                      option_map ~f:(fun x -> `Default x) sub_default_opt;
+                      config.local.pre.value
                     ]
                 }
             })
@@ -167,15 +167,15 @@
         fun is_outmost submit param_names config ->
         match param_names with
           | `Display ->
-            begin match Local_config.(config.local.pre.default) with
-              | None -> []
-              | Some default ->
+            begin match Local_config.(config.local.pre.value) with
+              | Some (`Default default) ->
                   let open Eliom_content.Html5.F in
                   let for_sub_default sub_default =
                     li (Form.pre_render false submit `Display
                           (sub_config config (Some sub_default)))
                   in
                   [ ul (List.map for_sub_default default) ]
+              | _ -> []
             end
           | `Param_names (prefix, param_names) ->
             let open Eliom_content.Html5.F in
@@ -195,19 +195,21 @@
               remove_a
             in
             let list =
+              let _, value = hidden_value Local_config.(config.local.pre.value) in
               Eliom_content.Html5.D.ul
                 ~a:[a_class [form_list_list_class]]
                 (param_names.Eliom_parameter.it
                    (fun param_names sub_default sofar ->
                      let li, remove_a =
+                       let config = sub_config config (Some sub_default) in
                        list_item ~dom_semantics:true
                          (Form.pre_render false submit
                             (`Param_names (prefix, param_names))
-                            (sub_config config (Some sub_default)))
+                            config)
                      in
                      ignore {unit{ connect_remove %prefix (to_dom %remove_a) }};
                      li :: sofar)
-                   (option_get ~default:[] Local_config.(config.local.pre.default))
+                   (option_get ~default:[] value)
                    [])
             in
             let add_a = Eliom_content.Html5.D.Raw.a [pcdata "Add"] in
@@ -265,7 +267,7 @@
         Local_config.fun_
           (fun local () ->
             let local = Local_config.({ local with
-              pre = { local.pre with default = Some value }
+              pre = { local.pre with value = Some (`Default value) }
             }) in
             opt_component_configs_fun
               (fun deep () ->

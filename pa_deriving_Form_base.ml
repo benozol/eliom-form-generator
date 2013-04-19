@@ -315,7 +315,7 @@ module Builder (Loc : Defs.Loc) = struct
                 <:expr< fun $component_tuple_pattern$ -> $lid:String.uncapitalize field_name$ >>)
               component_names
           in
-          let project_default_expr component_name =
+          let project_value_expr component_name =
             match repr with
               | Type.Record record_fields ->
                 <:expr<
@@ -384,7 +384,7 @@ module Builder (Loc : Defs.Loc) = struct
                   type enclosing_a = a
                   type enclosing_param_names = param_names
                   type enclosing_deep_config = deep_config
-                  let project_default = $project_default_expr component_name$
+                  let project_value = $project_value_expr component_name$
                   let project_param_names = $project_param_names_expr component_name$
                   let project_config = $lid:project component_name$
                   let prefix = $lid:prefix_lid component_name$

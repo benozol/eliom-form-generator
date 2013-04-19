@@ -12,6 +12,14 @@ let failwith fmt =
       failwith str)
     fmt
 }}
+{server{
+  let message fmt =
+    Printf.ksprintf (fun str -> Ocsigen_messages.console (fun () -> str)) fmt
+}}
+{client{
+  let message fmt =
+    Printf.ksprintf (fun str -> Firebug.console ## log (Js.string str)) fmt
+}}
 
 {client{
   let debug = Eliom_lib.debug
@@ -38,15 +46,19 @@ let option_get' ~default = function
 let option_map ~f = function
   | Some x -> Some (f x)
   | None -> None
-let option_get_map ~default ~f o =
-  option_get ~default (option_map ~f o)
-let option_iter f = function
+let option_get_map : default:'b -> f:('a -> 'b) -> 'a option -> 'b =
+  fun ~default ~f o ->
+    option_get ~default (option_map ~f o)
+let option_get'_map : default:(unit -> 'b) -> f:('a -> 'b) -> 'a option -> 'b =
+  fun ~default ~f o ->
+    option_get' ~default (option_map ~f o)
+let option_iter ~f = function
   | Some x -> f x
   | None -> ()
 let option_to_list = function
   | Some x -> [x]
   | None -> []
-let option_bind f = function
+let option_bind ~f = function
   | Some x -> f x
   | None -> None
 let maybe_get_option_map really opt f =
@@ -63,10 +75,15 @@ let rec option_or = function
 let list_filter_some li =
   List.map (option_get' ~default:(fun () -> assert false))
     (List.filter (fun x -> x <> None) li)
+let list_singleton x = [x]
+
+let map_fst ~f (a, b) = f a, b
+let map_snd ~f (a, b) = a, f b
 
 let identity x = x
 let constant x _ = x
-let (%) f g x = f (g x)
+let flip f x y = f y x
+let (-|) f g = fun x -> f (g x)
 let (@@) f x = f x
 
 module String_map = struct
