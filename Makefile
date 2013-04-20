@@ -23,7 +23,8 @@ PA_COPTS_TC := -package deriving-ocsigen.syntax_tc,js_of_ocaml.deriving.syntax_t
 SOURCE_FILES=$(wildcard *.eliom)
 cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
 
-all: pa_deriving_Form.cma pa_deriving_Form_tc.cma $(ELIOM_SERVER_DIR)/deriving_Form.cmo $(ELIOM_CLIENT_DIR)/deriving_Form.cmo META
+
+all: pa_deriving_Form.cma pa_deriving_Form_tc.cma $(addprefix $(ELIOM_SERVER_DIR)/, $(call cmo_files,-server)) $(addprefix $(ELIOM_CLIENT_DIR)/, $(call cmo_files,-client)) $(ELIOM_CLIENT_DIR)/deriving_Form.cmo META
 
 $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
 	$(ELIOMC) -infer -package js_of_ocaml $(PA_COPTS) $<
