@@ -172,6 +172,55 @@ module Form_int =
       let default_template = atomic_template default_template default_widget
      end)
 
+let int_widget :
+    (?a:Html5_types.input_attrib Eliom_content_core.Html5.attrib list ->
+     input_type:[> `Number] ->
+     ?name:[< 'int Eliom_parameter.setoneradio ] Eliom_parameter.param_name ->
+     ?value:'int ->
+     unit -> [> Html5_types.input ] Eliom_content_core.Html5.elt) ->
+    (?a:Html5_types.select_attrib Eliom_content_core.Html5.attrib list ->
+     ?required:pcdata ->
+     name:[< `One of 'int ] Eliom_parameter.param_name ->
+     'int Eliom_content.Html5.F.select_opt ->
+     'int Eliom_content.Html5.F.select_opt list ->
+     [> Html5_types.select ] Eliom_content_core.Html5.elt) ->
+    _ =
+  let open Eliom_content.Html5.F in
+  fun input select int_to_string ->
+    fun ~param_names ?value ?(a=[]) ~template_data:values_opt () ->
+    let required_label = "please select" in
+    let hidden, value' = hidden_value value in
+    match param_names with
+      | `Param_names (_, param_names) -> begin
+        match values_opt with
+          | None ->
+            let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
+            let a = a_required `Required :: if hidden then a_hidden `Hidden :: a else a in [
+              input ~a ~name:param_names ?value:value' ~input_type:`Number ();
+              input_marker;
+            ]
+          | Some values ->
+            if values <> [] then
+              let a = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
+              let a = if hidden then a_hidden `Hidden :: a else a in
+              let options =
+                List.map
+                  (function i, label, selected ->
+                    Option ([], i, Some label, selected))
+                  values
+              in [
+                select ~a ~required:(pcdata required_label)
+                  ~name:param_names (List.hd options) (List.tl options);
+                input_marker;
+              ]
+            else
+              let a' = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
+              let open Eliom_content.Html5.F.Raw in
+              [ select ~a:(a_required `Required :: a')
+                  [option ~a:[a_value ""] (pcdata required_label)] ]
+      end
+      | `Display -> [pcdata (option_get ~default:"" (option_map ~f:int_to_string value'))]
+
 module Form_int64 =
   Make_atomic
     (struct
@@ -184,39 +233,22 @@ module Form_int64 =
       let apply_template_data_fun (f : _ template_data_fun) = f ()
       let default_widget =
         let open Eliom_content.Html5.F in
-        fun ~param_names ?value ?(a=[]) ~template_data:values_opt () ->
-          let required_label = "please select" in
-          let hidden, value' = hidden_value value in
-          match param_names with
-            | `Param_names (_, param_names) -> begin
-              match values_opt with
-                | None ->
-                  let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
-                  let a = a_required `Required :: if hidden then a_hidden `Hidden :: a else a in [
-                    int64_input ~a ~name:param_names ?value:value' ~input_type:`Number ();
-                    input_marker;
-                  ]
-                | Some values ->
-                  if values <> [] then
-                    let a = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
-                    let a = if hidden then a_hidden `Hidden :: a else a in
-                    let options =
-                      List.map
-                        (function i, label, selected ->
-                          Option ([], i, Some label, selected))
-                        values
-                    in [
-                      int64_select ~a ~required:(pcdata required_label)
-                        ~name:param_names (List.hd options) (List.tl options);
-                      input_marker;
-                    ]
-                  else
-                    let a' = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
-                    let open Eliom_content.Html5.F.Raw in
-                    [ select ~a:(a_required `Required :: a')
-                        [option ~a:[a_value ""] (pcdata required_label)] ]
-            end
-            | `Display -> [pcdata (option_get ~default:"" (option_map ~f:Int64.to_string value'))]
+        int_widget int64_input int64_select Int64.to_string
+     end)
+
+module Form_int32 =
+  Make_atomic
+    (struct
+      type a = int32
+      type param_names = [`One of int32] Eliom_parameter.param_name
+      let params_type = Eliom_parameter.int32
+      type template_data = (int32 * pcdata * bool) list option
+      type 'res template_data_fun = ?from_list:(int32 * pcdata * bool) list -> unit -> 'res
+      let pre_template_data ~value:_ k ?from_list () = k from_list
+      let apply_template_data_fun (f : _ template_data_fun) = f ()
+      let default_widget =
+        let open Eliom_content.Html5.F in
+        int_widget int32_input int32_select Int32.to_string
      end)
 
 module Form_unit =
