@@ -34,11 +34,12 @@ module Make :
     include Make_base (Options)
 
     let field_renderings submit param_names value deep =
-      List.map
-        (fun (module Field : Field with
-                type enclosing_a = a and
-                type enclosing_param_names = param_names and
-                type enclosing_deep_config = deep_config) ->
+      Lwt_list.map_p
+        (fun (field_name,
+              (module Field : Field with
+                 type enclosing_a = a and
+                 type enclosing_param_names = param_names and
+                 type enclosing_deep_config = deep_config)) ->
          let config =
            let default = { local = Local_config.zero ; deep = Field.default_deep_config } in
            let config = option_get ~default (Field.project_config deep) in
@@ -48,15 +49,19 @@ module Make :
                (option_map ~f:(default_constant_map ~f:Field.project_value)
                   value)
            ] in
+           let label =
+             Some (option_get ~default:[pcdata (default_label_of_component_name field_name)]
+                     Local_config.(config.local.pre.label))
+           in
            Local_config.({
              config with local = {
                config.local with pre = {
-                 config.local.pre with value
+                 config.local.pre with value ; label
                }
              }
            })
          in
-         let content =
+         lwt content =
            let param_names =
              match param_names with
              | `Display -> `Display
