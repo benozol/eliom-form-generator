@@ -3,9 +3,6 @@
    * Make constant values unbreakable
         - having all fields of type a as (string, a) either
         - with string is the encrypted json representation of the constant value
-
-   * Rename param_names to params
-
 *)
 
 
@@ -304,7 +301,7 @@ module type Base_options = sig
   type ('arg, 'res) opt_component_configs_fun
   include Repr with type t := a
   include Template_data with type a := a
-  val params_type' : string -> string * (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  val params' : string -> string * (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val opt_component_configs_fun : (deep_config -> 'arg -> 'res) ->
     ('arg, 'res) opt_component_configs_fun
   val default_deep_config : deep_config
@@ -321,7 +318,7 @@ end
 module type Form = sig
   include Pre_form
   type config = (a, param_names, template_data, deep_config) config'
-  val params_type : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  val params : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val template_data : value:a option -> template_data template_data_fun
   val content :
     ?submit:button_content ->
@@ -368,7 +365,7 @@ end
 
 module Make_base (Options : Base_options) = struct
   include Options
-  let params_type prefix = snd (params_type' (prefix^param_name_root))
+  let params prefix = snd (params' (prefix^param_name_root))
   let template_data ~value = pre_template_data ~value identity
   type config = (a, param_names, template_data, deep_config) config'
   let config :

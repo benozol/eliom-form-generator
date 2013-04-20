@@ -38,7 +38,7 @@ module type Atomic_options = sig
   type param_names
   include Template_data with type a := a
   val default_widget : (a, param_names, template_data) widget
-  val params_type : string -> (a, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  val params : string -> (a, [`WithoutSuffix], param_names) Eliom_parameter.params_type
 end
 
 module Make_atomic :
@@ -66,7 +66,7 @@ module Make_atomic :
     include Make_base
       (struct
         include Atomic_options
-        let params_type' prefix = prefix, params_type prefix
+        let params' prefix = prefix, params prefix
         let component_names = []
         let default_deep_config = ()
         let opt_component_configs_fun k x = k () x
@@ -135,7 +135,7 @@ module Form_string =
       type 'res template_data_fun = ?required_pattern:string -> unit -> 'res
       let pre_template_data ~value:_ k ?required_pattern () = k required_pattern
       let apply_template_data_fun (f : _ template_data_fun) = f ()
-      let params_type = Eliom_parameter.string
+      let params = Eliom_parameter.string
       let default_widget = form_string_default_widget false
      end)
 
@@ -144,7 +144,7 @@ module Form_int =
     (struct
       type a = int
       type param_names = [`One of int] Eliom_parameter.param_name
-      let params_type = Eliom_parameter.int
+      let params = Eliom_parameter.int
       type template_data = unit
       type 'res template_data_fun = 'res
       let pre_template_data ~value:_ k = k ()
@@ -226,7 +226,7 @@ module Form_int64 =
     (struct
       type a = int64
       type param_names = [`One of int64] Eliom_parameter.param_name
-      let params_type = Eliom_parameter.int64
+      let params = Eliom_parameter.int64
       type template_data = (int64 * pcdata * bool) list option
       type 'res template_data_fun = ?from_list:(int64 * pcdata * bool) list -> unit -> 'res
       let pre_template_data ~value:_ k ?from_list () = k from_list
@@ -241,7 +241,7 @@ module Form_int32 =
     (struct
       type a = int32
       type param_names = [`One of int32] Eliom_parameter.param_name
-      let params_type = Eliom_parameter.int32
+      let params = Eliom_parameter.int32
       type template_data = (int32 * pcdata * bool) list option
       type 'res template_data_fun = ?from_list:(int32 * pcdata * bool) list -> unit -> 'res
       let pre_template_data ~value:_ k ?from_list () = k from_list
@@ -257,7 +257,7 @@ module Form_unit =
       type a = unit
       type param_names = unit
       include Template_data_unit (struct type t = a end)
-      let params_type _ = Eliom_parameter.unit
+      let params _ = Eliom_parameter.unit
       let default_widget =
         fun ~param_names:_ ?value:_ ?a:_ ~template_data:() () ->
           []

@@ -12,9 +12,9 @@ The form content for `get_form` or `post_form` can then be generate with the fun
   Eliom_content.Html5.F.get_form ~service
     (Form_type_2.content () ())
 ```
-The description of Eliom's representation of the values is available through `params_type`:
+The description of Eliom's representation of the values is available through `params`:
 ```ocaml
-  My_app.service ~path ~get_params:(Form_type_2.params_type "value") ()
+  My_app.service ~path ~get_params:(Form_type_2.params "value") ()
 ```
 `deriving-eliom-form` can even be used to display a given value:
 ```ocaml
@@ -27,13 +27,13 @@ Design
 ------
 
 If you declare a type `t` with `deriving Form` (or `with form`), the most prominent generated functions are
- * ``Form_t.params_type prefix : (t, [`WithoutSuffix], param_names) Eliom_parameter.params_type``
+ * ``Form_t.params prefix : (t, [`WithoutSuffix], param_names) Eliom_parameter.params_type``
  * ``Form_t.content () () : param_names -> Html5_types.form_content Html5.elt list``
  * ``Form_t.display ~value () () : Html5_types.form_content Html5.elt list``
  * ``Form_t.config () () : Form_t.config``
 
 Why do the latter function take two times the value `()` as an argument ?
-Those separate two kinds of optional arguments : 
+Those separate two kinds of optional arguments :
 The arguments for the local configuration and the arguments to configure all components -
 i.e. the fields of a record or the variants of a ADT. For example
 ```ocaml

@@ -131,13 +131,13 @@
       include Template_data_unit (struct type t = a end)
       let template_data ~value:_ = ()
       let prefix_elt prefix = prefix_concat ~prefix list_suffix
-      let params_type' prefix =
+      let params' prefix =
         prefix,
         Eliom_parameter.list
           (prefix_elt prefix)
-          (snd (Form.params_type' list_elt_suffix))
-      let params_type prefix =
-        snd (params_type' (prefix^param_name_root))
+          (snd (Form.params' list_elt_suffix))
+      let params prefix =
+        snd (params' (prefix^param_name_root))
       type config = (a, param_names, template_data, deep_config) config'
       let component_names = []
 

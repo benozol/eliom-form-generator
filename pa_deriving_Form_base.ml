@@ -265,7 +265,7 @@ module Builder (Loc : Defs.Loc) = struct
               >> )
             component_names
         in
-        let params_type'_expr =
+        let params'_expr =
           let product =
             fold_right1
               (fun component_type sofar ->
@@ -273,23 +273,23 @@ module Builder (Loc : Defs.Loc) = struct
           in
           match repr with
             | Type.Record _ ->
-              let params_types =
+              let params =
                 List.map
                   (fun component_name ->
                     <:expr<
-                      (snd ($uid:component_module_name component_name$ . params_type'
+                      (snd ($uid:component_module_name component_name$ . params'
                               ($lid:prefix_lid component_name$ prefix)))
                      >>)
                    component_names
               in
-              <:expr< fun prefix -> prefix, $product params_types$ >>
+              <:expr< fun prefix -> prefix, $product params$ >>
             | Type.Sum _ ->
-              let optional_params_types =
+              let optional_params =
                 List.map
                   (fun component_name ->
                     <:expr<
                       Eliom_parameter.opt
-                        (snd ($uid:component_module_name component_name$ . params_type'
+                        (snd ($uid:component_module_name component_name$ . params'
                                 ($lid:prefix_lid component_name$ prefix)))
                      >>)
                    component_names
@@ -300,7 +300,7 @@ module Builder (Loc : Defs.Loc) = struct
                   Eliom_parameter.prod
                     (Eliom_parameter.string
                        (Deriving_Form_base.prefix_concat ~prefix "|constructor"))
-                    $product optional_params_types$
+                    $product optional_params$
               >>
         in
         let component_tuple_pattern =
@@ -527,7 +527,7 @@ module Builder (Loc : Defs.Loc) = struct
               let of_repr = $of_repr_expr$
               let to_repr = $to_repr_expr$
               ;; $Ast.stSem_of_list prefix_decls$
-              let params_type' = $params_type'_expr$
+              let params' = $params'_expr$
               type ('arg, 'res) opt_component_configs_fun =
                 $Helpers.Untranslate'.expr opt_component_configs_fun_type$
               let opt_component_configs_fun k =

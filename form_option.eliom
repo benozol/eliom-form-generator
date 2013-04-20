@@ -28,15 +28,15 @@
           ("Some", (None, (Some (Component_Some.to_repr component))))
       let prefix_None prefix = prefix
       let prefix_Some prefix = prefix
-      let params_type' prefix =
+      let params' prefix =
         prefix,
         Eliom_parameter.prod
           (Eliom_parameter.string (prefix ^ "||constructor"))
           (Eliom_parameter.prod
              (Eliom_parameter.opt
-                (snd (Component_None.params_type' (prefix_None prefix))))
+                (snd (Component_None.params' (prefix_None prefix))))
              (Eliom_parameter.opt
-                (snd (Component_Some.params_type' (prefix_Some prefix)))))
+                (snd (Component_Some.params' (prefix_Some prefix)))))
       type ('arg, 'res) opt_component_configs_fun =
         ?none: Component_None.config ->
         ?some: Component_Some.config -> 'arg -> 'res
