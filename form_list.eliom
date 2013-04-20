@@ -129,7 +129,7 @@
       type deep_config = Form.config option
       let default_deep_config = None
       include Template_data_unit (struct type t = a end)
-      let template_data ~value:_ = ()
+      let template_data ~value:_ = Lwt.return ()
       let prefix_elt prefix = prefix_concat ~prefix list_suffix
       let params' prefix =
         prefix,
@@ -141,7 +141,7 @@
       type config = (a, param_names, template_data, deep_config) config'
       let component_names = []
 
-      let pre_render : bool -> button_content option -> param_names or_display -> config -> form_content =
+      let pre_render =
         let sub_config config sub_default_opt =
           let config =
             let default_config =
@@ -171,11 +171,13 @@
               | Some (`Default default) ->
                   let open Eliom_content.Html5.F in
                   let for_sub_default sub_default =
-                    li (Form.pre_render false submit `Display
-                          (sub_config config (Some sub_default)))
+                    Lwt.map li
+                      (Form.pre_render false submit `Display
+                         (sub_config config (Some sub_default)))
                   in
-                  [ ul (List.map for_sub_default default) ]
-              | _ -> []
+                  Lwt.map (list_singleton -| ul)
+                    (Lwt_list.map_p for_sub_default default)
+              | _ -> Lwt.return []
             end
           | `Param_names (prefix, param_names) ->
             let open Eliom_content.Html5.F in
@@ -194,34 +196,37 @@
                 (li_content @ [ remove_a ]),
               remove_a
             in
-            let list =
+            lwt list =
               let _, value = hidden_value Local_config.(config.local.pre.value) in
-              Eliom_content.Html5.D.ul
-                ~a:[a_class [form_list_list_class]]
+              Lwt.map
+                (Eliom_content.Html5.D.ul ~a:[a_class [form_list_list_class]])
                 (param_names.Eliom_parameter.it
                    (fun param_names sub_default sofar ->
-                     let li, remove_a =
+                     lwt sofar = sofar in
+                     lwt li, remove_a =
                        let config = sub_config config (Some sub_default) in
-                       list_item ~dom_semantics:true
+                       Lwt.map (list_item ~dom_semantics:true)
                          (Form.pre_render false submit
                             (`Param_names (prefix, param_names))
                             config)
                      in
                      ignore {unit{ connect_remove %prefix (to_dom %remove_a) }};
-                     li :: sofar)
+                     Lwt.return (li :: sofar))
                    (option_get ~default:[] value)
-                   [])
+                   (Lwt.return []))
             in
             let add_a = Eliom_content.Html5.D.Raw.a [pcdata "Add"] in
-            let li_template =
-              fst @@ param_names.Eliom_parameter.it
-                (fun param_names _ _ ->
-                  list_item ~dom_semantics:true
-                    (Form.pre_render false submit
-                       (`Param_names (prefix, param_names))
-                       (sub_config config None)))
-                [Obj.magic ()]
-                (Obj.magic ())
+            lwt li_template =
+              Lwt.map fst
+                (param_names.Eliom_parameter.it
+                   (fun param_names _ _ ->
+                     Lwt.map
+                       (list_item ~dom_semantics:true)
+                       (Form.pre_render false submit
+                          (`Param_names (prefix, param_names))
+                          (sub_config config None)))
+                   [Obj.magic ()]
+                   (Obj.magic ()))
             in
             ignore {unit{
               Lwt_js_events.async
@@ -257,7 +262,7 @@
                       form_inputs_set_required (find_form_node a_node);
                       Lwt.return ()));
             }};
-            set_required_for_outmost ~is_outmost [list] @ [ add_a ]
+            Lwt.return (set_required_for_outmost ~is_outmost [list] @ [ add_a ])
 
       type ('arg, 'res) opt_component_configs_fun =
           ?elt:Form.config -> 'arg -> 'res

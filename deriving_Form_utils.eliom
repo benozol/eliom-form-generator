@@ -77,6 +77,11 @@ let list_filter_some li =
     (List.filter (fun x -> x <> None) li)
 let list_singleton x = [x]
 
+let option_get_lwt : default:(unit -> 'a Lwt.t) -> 'a option -> 'a Lwt.t =
+  fun ~default option ->
+    option_get' ~default
+      (option_map ~f:Lwt.return option)
+
 let map_fst ~f (a, b) = f a, b
 let map_snd ~f (a, b) = a, f b
 

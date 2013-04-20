@@ -109,7 +109,7 @@ module Template = struct
   }
 
   type ('a, 'param_names, 'template_data) t =
-    ('a, 'param_names, 'template_data) arguments -> form_content
+    ('a, 'param_names, 'template_data) arguments -> form_content Lwt.t
 
   let arguments ~is_outmost ?submit ?(config=Pre_local_config.zero) ~template_data
       ~param_names ~component_renderings () =
@@ -243,10 +243,12 @@ let template_table =
                let contents = captions @ fields @ annotations @ submits in
                let outmost_class = if is_outmost then ["outmost"] else [] in
                match contents with
-               | [] -> []
+               | [] -> Lwt.return []
                | hd :: tl ->
-                 [ table ~a:(a_class (["form"; form_class] @ outmost_class) :: a)
-                     hd tl ]))
+                 Lwt.return [
+                   table ~a:(a_class (["form"; form_class] @ outmost_class) :: a)
+                     hd tl
+                 ]))
       arguments
 
 let default_template =
@@ -276,7 +278,7 @@ module type Template_data = sig
   type a
   type template_data
   type 'res template_data_fun
-  val pre_template_data : value:a option -> (template_data -> 'res) -> 'res template_data_fun
+  val pre_template_data : value:a option -> (template_data -> 'res Lwt.t) -> 'res Lwt.t template_data_fun
   val apply_template_data_fun : 'res template_data_fun -> 'res
 end
 
@@ -312,27 +314,28 @@ end
 module type Pre_form = sig
   include Base_options
   val pre_render : bool -> button_content option -> param_names or_display ->
-    (a, param_names, template_data, deep_config) config' -> form_content
+    (a, param_names, template_data, deep_config) config' ->
+    form_content Lwt.t
 end
 
 module type Form = sig
   include Pre_form
   type config = (a, param_names, template_data, deep_config) config'
   val params : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
-  val template_data : value:a option -> template_data template_data_fun
+  val template_data : value:a option -> template_data Lwt.t template_data_fun
   val content :
     ?submit:button_content ->
     ( a, param_names, template_data,
       unit,
       (unit,
-       param_names -> form_content) opt_component_configs_fun
+       param_names -> form_content Lwt.t) opt_component_configs_fun
     ) Local_config.fun_
   val display :
     value:a ->
     ( a, param_names, template_data,
       unit,
       (unit,
-       form_content) opt_component_configs_fun ) Local_config.fun_
+       form_content Lwt.t) opt_component_configs_fun ) Local_config.fun_
   val config :
     ( a, param_names, template_data,
       unit,
@@ -366,7 +369,7 @@ end
 module Make_base (Options : Base_options) = struct
   include Options
   let params prefix = snd (params' (prefix^param_name_root))
-  let template_data ~value = pre_template_data ~value identity
+  let template_data ~value = pre_template_data ~value Lwt.return
   type config = (a, param_names, template_data, deep_config) config'
   let config :
       ( a, param_names, template_data, unit, (unit, config) opt_component_configs_fun

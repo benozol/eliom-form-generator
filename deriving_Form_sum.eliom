@@ -94,42 +94,48 @@ module Make
       { Component_rendering.
         content; label=None; selector=None; annotation=None; a=None; default_constant=None }
     in
-    variant_drop_down ::
-    list_filter_some
-      (List.map2
-         (fun variant_name
-           (module Variant : Variant with
-              type enclosing_a = a and
-              type enclosing_param_names = param_names and
-              type enclosing_deep_config = deep_config)
-         ->
-           let config =
-             let config_from_deep =
-               option_get
-                 ~default:{ local = Local_config.zero;
-                            deep = Variant.default_deep_config }
-                 (Variant.project_config deep)
-             in
-             let local =
-               let default_local =
+    lwt variants =
+      Lwt.map list_filter_some
+        (Lwt_list.map_p
+           (fun (variant_name,
+                 (module Variant : Variant with
+                    type enclosing_a = a and
+                    type enclosing_param_names = param_names and
+                    type enclosing_deep_config = deep_config)) ->
+             lwt config =
+               let config_from_deep =
+                 option_get
+                   ~default:{ local = Local_config.zero;
+                              deep = Variant.default_deep_config }
+                   (Variant.project_config deep)
+               in
+             lwt local =
+               lwt default_local =
                  let value =
                   option_bind ~f:default_constant_put_over_option
                     (option_map
                        ~f:(default_constant_map ~f:Variant.project_value)
                        value)
                  in
-                 let template_data =
+                 lwt template_data =
                    let value = option_map ~f:default_constant_get value in
-                   Some (Variant.apply_template_data_fun (Variant.pre_template_data ~value identity))
+                   Lwt.map some
+                     (Variant.apply_template_data_fun
+                        (Variant.pre_template_data ~value Lwt.return))
                  in
-                 { Local_config.
-                   pre = { Pre_local_config.value; label=None; annotation=None; a=None };
-                   template = None;
-                   template_data }
+                 Lwt.return
+                   { Local_config.
+                     pre = { Pre_local_config.value; label=None; annotation=None; a=None };
+                     template = None;
+                     template_data }
                in
-               Local_config.option_or_by_field [ config_from_deep.local ; default_local ]
+               Lwt.return
+                 (Local_config.option_or_by_field [
+                   config_from_deep.local;
+                   default_local;
+                  ])
              in
-             { config_from_deep with local }
+             Lwt.return { config_from_deep with local }
            in
            let is_constructor =
              option_get_map ~default:false
@@ -137,12 +143,12 @@ module Make
                value
            in
            if param_names = `Display && not is_constructor then
-             None
+             Lwt.return None
            else
              Pre_local_config.bind config.local.Local_config.pre
                (fun ?label ?annotation ?value:_ ?a:_ () ->
                  let selector = None in
-                 let content =
+                 lwt content =
                    let param_names =
                      match param_names with
                      | `Display -> `Display
@@ -158,21 +164,25 @@ module Make
                    Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
                    Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
                  ] in
-                 Some ({ Component_rendering.
-                         a; selector; label; annotation; content; default_constant=None })))
-         Options.component_names
-         Options.variants)
+                 Lwt.return
+                   (Some ({ Component_rendering.
+                            a; selector; label; annotation; content;
+                            default_constant=None }))))
+         (List.combine Options.component_names Options.variants))
+    in
+    Lwt.return (variant_drop_down :: variants)
+
 
 
   let pre_render is_outmost submit param_names { local ; deep } =
     let { Local_config.pre ; template ; template_data } = local in
     let template = option_get ~default:default_template template in
-    let template_data =
+    lwt template_data =
       let default () =
         let value = option_map ~f:default_constant_get pre.Local_config.value in
-        apply_template_data_fun (pre_template_data ~value identity)
+        apply_template_data_fun (pre_template_data ~value Lwt.return)
       in
-      option_get' ~default template_data
+      option_get_lwt ~default template_data
     in
     let pre =
       let a =
@@ -201,8 +211,8 @@ module Make
       in
       { pre with Local_config.a }
     in
-    let component_renderings = variant_renderings submit param_names pre.Local_config.value deep in
-    set_required_for_outmost ~is_outmost
+    lwt component_renderings = variant_renderings submit param_names pre.Local_config.value deep in
+    Lwt.map (set_required_for_outmost ~is_outmost)
       (template
          (Template.arguments ~is_outmost ?submit ~config:pre
             ~param_names ~template_data ~component_renderings ()))

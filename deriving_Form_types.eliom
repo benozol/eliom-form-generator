@@ -9,7 +9,7 @@ type ('a, 'param_names, 'template_data) widget =
   ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list ->
   template_data:'template_data ->
   unit ->
-  form_content
+  form_content Lwt.t
 
 let atomic_template : (_, _, _) Template.t -> (_, _, _) widget -> (_, _, _) Template.t =
   fun template widget ->
@@ -18,7 +18,7 @@ let atomic_template : (_, _, _) Template.t -> (_, _, _) widget -> (_, _, _) Temp
         assert (component_renderings = []);
         Pre_local_config.bind config
           (fun ?label ?annotation ?value ?a () ->
-            let content = widget ~param_names ?value ?a ?template_data () in
+            lwt content = widget ~param_names ?value ?a ?template_data () in
             if is_outmost then
               let default_constant = option_map ~f:default_constant value in
               let component_renderings = [
@@ -28,9 +28,10 @@ let atomic_template : (_, _, _) Template.t -> (_, _, _) widget -> (_, _, _) Temp
               ] in
               template
                 (Template.arguments
-                   ~is_outmost ?submit ~config ~template_data ~param_names ~component_renderings ())
+                   ~is_outmost ?submit ~config ~template_data
+                   ~param_names ~component_renderings ())
             else
-              content))
+              Lwt.return content))
 
 
 module type Atomic_options = sig
@@ -80,12 +81,12 @@ module Make_atomic :
     let pre_render is_outmost submit param_names {local; deep=()} =
       let { Local_config.pre; template; template_data } = local in
       let template = option_get ~default:default_template template in
-      let template_data =
+      lwt template_data =
         let default () =
           let value = option_map ~f:default_constant_get pre.Local_config.value in
-          apply_template_data_fun (pre_template_data ~value identity)
+          apply_template_data_fun (pre_template_data ~value Lwt.return)
         in
-        option_get' ~default template_data
+        option_get_lwt ~default template_data
       in
       template
         (Template.arguments ~is_outmost ?submit ~config:pre
@@ -117,14 +118,16 @@ let form_string_default_widget can_be_empty : (string,_,_) widget =
     match param_names with
     | `Param_names (_, param_names) ->
       let a = if hidden then a_hidden `Hidden :: a else a in
-      [
+      Lwt.return [
         string_input ~a ~name:param_names ?value:value' ~input_type:`Text ();
         input_marker;
       ]
     | `Display ->
       if not hidden then
-        option_get_map ~default:[] ~f:(fun x -> list_singleton (pcdata x)) value'
-      else []
+        Lwt.return
+          (option_get_map ~default:[] ~f:(fun x -> list_singleton (pcdata x))
+             value')
+      else Lwt.return []
 
 module Form_string =
   Make_atomic
@@ -159,16 +162,16 @@ module Form_int =
             let a =
               a_required `Required ::
                 if hidden then a_hidden `Hidden :: a else a
-            in [
+            in Lwt.return [
               int_input ~a ~name:param_names ?value ~input_type:`Number ();
               input_marker;
             ]
           | `Display ->
             if not hidden then
-              option_get_map ~default:[]
+              Lwt.return @@ option_get_map ~default:[]
                 ~f:(fun x -> list_singleton (pcdata (string_of_int x)))
                 value
-            else []
+            else Lwt.return []
       let default_template = atomic_template default_template default_widget
      end)
 
@@ -195,7 +198,8 @@ let int_widget :
         match values_opt with
           | None ->
             let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
-            let a = a_required `Required :: if hidden then a_hidden `Hidden :: a else a in [
+            let a = a_required `Required :: if hidden then a_hidden `Hidden :: a else a in
+            Lwt.return [
               input ~a ~name:param_names ?value:value' ~input_type:`Number ();
               input_marker;
             ]
@@ -208,7 +212,8 @@ let int_widget :
                   (function i, label, selected ->
                     Option ([], i, Some label, selected))
                   values
-              in [
+              in
+              Lwt.return [
                 select ~a ~required:(pcdata required_label)
                   ~name:param_names (List.hd options) (List.tl options);
                 input_marker;
@@ -216,10 +221,15 @@ let int_widget :
             else
               let a' = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
               let open Eliom_content.Html5.F.Raw in
-              [ select ~a:(a_required `Required :: a')
-                  [option ~a:[a_value ""] (pcdata required_label)] ]
+              Lwt.return [
+                select ~a:(a_required `Required :: a')
+                  [option ~a:[a_value ""] (pcdata required_label)]
+              ]
       end
-      | `Display -> [pcdata (option_get ~default:"" (option_map ~f:int_to_string value'))]
+      | `Display ->
+        Lwt.return [
+          pcdata (option_get ~default:"" (option_map ~f:int_to_string value'))
+        ]
 
 module Form_int64 =
   Make_atomic
@@ -260,7 +270,7 @@ module Form_unit =
       let params _ = Eliom_parameter.unit
       let default_widget =
         fun ~param_names:_ ?value:_ ?a:_ ~template_data:() () ->
-          []
+          Lwt.return []
      end)
 
 (******************************************************************************)
