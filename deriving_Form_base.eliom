@@ -449,9 +449,7 @@ end
     match contains form_record_class, contains form_sum_class with
       | true, false -> `Record
       | false, true ->
-        if contains form_sum_dropdown_class then
-          `Sum `Drop_down
-        else failwith "classify_form_node: sum"
+        `Sum `Drop_down
       | _ -> failwith "classify_form_node"
 
   let rec nodes_between ~root ~descendent =
