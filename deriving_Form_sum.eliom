@@ -202,12 +202,13 @@ module Make
                 variant_name ]
           | None -> []
         in
+        let form_sum = Eliom_content.Html5.F.a_class [ form_sum_class ] in
         let maybe_hidden =
           if hidden then
             [ Eliom_content.Html5.F.a_style "display: none" ]
           else []
         in
-        Some (a_form_sum_variant @ maybe_hidden @ option_get ~default:[] pre.Local_config.a)
+        Some (form_sum :: a_form_sum_variant @ maybe_hidden @ option_get ~default:[] pre.Local_config.a)
       in
       { pre with Local_config.a }
     in
