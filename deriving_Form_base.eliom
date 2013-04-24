@@ -40,44 +40,60 @@ let input_marker =
 
 type 'param_names or_display = [ `Display | `Param_names of string * 'param_names ]
 
-type 'a default_constant_value = [`Default of 'a | `Constant of 'a]
-type default_constant' = [`Default|`Constant]
+let default_label_of_component_name s =
+  let s =
+    if Str.string_match (Str.regexp "[a-zA-Z]_+") s 0
+    then
+      let prefix_length = String.length (Str.matched_string s) in
+      String.sub s prefix_length (String.length s - prefix_length)
+    else s
+  in
+  let s = Str.global_replace (Str.regexp "_") " " s in
+  String.capitalize s
+
+type 'a default_constant = [`Default of 'a | `Constant of 'a]
 let default_constant_map ~f = function
   | `Constant a -> `Constant (f a)
   | `Default a -> `Default (f a)
 let default_constant_get = function
   | `Default x | `Constant x -> x
 let default_constant_put_over_option :
-    'a option default_constant_value -> 'a default_constant_value option =
+    'a option default_constant -> 'a default_constant option =
   fun dc ->
     match default_constant_get dc with
     | Some a -> Some (default_constant_map ~f:(constant a) dc)
     | None -> None
-let default_constant = function
+type default_or_constant = [` Default | `Constant ]
+let default_or_constant = function
   | `Constant _ -> `Constant
   | `Default _ -> `Default
 let hidden_value value =
-  option_map ~f:default_constant value = Some `Constant,
+  option_map ~f:default_or_constant value = Some `Constant,
   option_map ~f:default_constant_get value
 
 module Component_rendering = struct
-  type t = {
-    label : form_content option;
-    selector : form_content option;
-    content : form_content;
-    annotation : form_content option;
+  type surrounding = {
     a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
-    default_constant : default_constant' option;
+    label : form_content option;
+    annotation : form_content option;
+    value : default_or_constant option;
   }
-  let bind { label ; selector ; annotation ; a ; content ; default_constant } f =
-    f ?label ?selector ~content ?annotation ?a ?default_constant ()
+  type t = {
+    content : form_content;
+    surrounding : surrounding;
+  }
+  let surrounding_zero =
+    { a = None ; label = None ; annotation = None ; value = None }
+  let bind { content ; surrounding } k =
+    let { a ; label ; annotation ; value } = surrounding in
+    k ~content ?a ?label ?annotation ?value ()
 end
 
 module Pre_local_config = struct
   type 'a t = {
     label : form_content option;
     annotation : form_content option;
-    value :  'a default_constant_value option;
+    value :  'a default_constant option;
     a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
   }
   let zero = {
@@ -86,15 +102,15 @@ module Pre_local_config = struct
   let bind x f =
     let { label ; annotation ; value ; a } = x in
     f ?label ?annotation ?value ?a ()
-  let option_or_by_field cs =
-    List.fold_left
-      (fun c1 c2 -> {
-        label = option_or [c1.label; c2.label];
-        annotation = option_or [c1.annotation; c2.annotation];
-        value = option_or [c1.value; c2.value];
-        a = option_or [c1.a; c2.a];
-       })
-      zero cs
+  let option_or_by_field c1 c2 = {
+    label = option_or c1.label c2.label;
+    annotation = option_or c1.annotation c2.annotation;
+    value = option_or c1.value c2.value;
+    a = option_or c1.a c2.a;
+  }
+  let to_surrounding { a ; label ; annotation ; value } =
+    let value = option_map ~f:default_or_constant value in
+    { Component_rendering.a ; label ; annotation ; value }
 end
 
 module Template = struct
@@ -130,7 +146,7 @@ module Local_config = struct
   type 'a pre = 'a Pre_local_config.t = {
     label : form_content option;
     annotation : form_content option;
-    value :  'a default_constant_value option;
+    value :  'a default_constant option;
     a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list option;
   }
 
@@ -143,7 +159,7 @@ module Local_config = struct
   type ('a, 'param_names, 'template_data, 'arg, 'res) fun_ =
     ?label:form_content ->
     ?annotation:form_content ->
-    ?value:'a default_constant_value ->
+    ?value:'a default_constant ->
     ?a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list ->
     ?template:('a, 'param_names, 'template_data) Template.t ->
     ?template_data:'template_data ->
@@ -151,22 +167,37 @@ module Local_config = struct
 
   let zero = { pre = Pre_local_config.zero ; template = None ; template_data = None }
 
-  let fun_ : _ -> (_, _, _, unit, _) fun_ =
+  let fun_ : _ -> (_, _, _, _, _) fun_ =
     fun k ?label ?annotation ?value ?a ?template ?template_data arg ->
       let pre = Pre_local_config.({ label ; annotation ; value ; a }) in
       k { pre ; template; template_data } arg
 
-  let bind { pre = { label ; annotation ; value ; a } ; template ; template_data } k =
-    k ?label ?annotation ?value ?a ?template ?template_data ()
+  let bind { pre = { label ; annotation ; value ; a } ; template ; template_data } k arg =
+    k ?label ?annotation ?value ?a ?template ?template_data arg
 
-  let option_or_by_field cs =
-    List.fold_left
-      (fun c1 c2 -> {
-        pre = Pre_local_config.option_or_by_field [c1.pre; c2.pre];
-        template = option_or [c1.template; c2.template];
-        template_data = option_or [c1.template_data; c2.template_data];
-      })
-      zero cs
+  let option_or_by_field c1 c2 = {
+    pre = Pre_local_config.option_or_by_field c1.pre c2.pre;
+    template = option_or c1.template c2.template;
+    template_data = option_or c1.template_data c2.template_data;
+  }
+
+  let update : ('a, 'param_names, 'template_data, ('a, 'param_names, 'template_data) t, ('a, 'param_names, 'template_data) t) fun_ =
+    fun ?label ->
+      fun_
+        (fun update config ->
+          option_or_by_field update config)
+        ?label
+
+  let for_component ?value ?component_name ~local ~local_override =
+    let local_from_value =
+      let value = option_bind ~f:default_constant_put_over_option value in
+      update ?value zero in
+    let local_from_fieldname =
+      let label = option_map ~f:(fun str -> [pcdata (default_label_of_component_name str)]) component_name in
+      update ?label zero in
+    List.fold_left option_or_by_field zero
+      [ local_override; local_from_value;
+        local; local_from_fieldname ]
 
 end
 
@@ -209,18 +240,12 @@ let template_table =
                    List.filter is_some @@
                      List.map
                        (flip Component_rendering.bind
-                          (fun ?(label=[]) ?selector ~content ?annotation ?(a=[]) ?default_constant () ->
-                            if selector = None && annotation = None && content = [] then
+                          (fun ~content ?(a=[]) ?(label=[]) ?annotation ?value () ->
+                            if annotation = None && content = [] then
                               None
                             else
                               let label =
                                 td ~a:[a_class ["label"]] label
-                              in
-                              let selector =
-                                option_to_list
-                                  (option_map
-                                     ~f:(td ~a:[a_class ["selector"]])
-                                     selector)
                               in
                               let content =
                                 td ~a:[a_class ["content"]] content
@@ -232,12 +257,12 @@ let template_table =
                                      annotation)
                               in
                               let maybe_hidden =
-                                if default_constant = Some `Constant then
+                                if value = Some `Constant then
                                   [ a_style "display: none" ]
                                 else []
                               in
                               Some (tr ~a:(a_class ["field"] :: maybe_hidden @ a)
-                                      (selector @ label :: content :: annotation))))
+                                      (label :: content :: annotation))))
                    field_renderings
                in
                let contents = captions @ fields @ annotations @ submits in
@@ -254,16 +279,17 @@ let template_table =
 let default_template =
   template_table
 
-let default_label_of_component_name s =
-  let s =
-    if Str.string_match (Str.regexp "[a-zA-Z]_+") s 0
-    then
-      let prefix_length = String.length (Str.matched_string s) in
-      String.sub s prefix_length (String.length s - prefix_length)
-    else s
-  in
-  let s = Str.global_replace (Str.regexp "_") " " s in
-  String.capitalize s
+
+type id_repr = int option
+type id_param_name = [`One of int] Eliom_parameter.param_name
+let id_param_name = Eliom_parameter.(opt (int "__eliom_form_id__"))
+let id_input ?id ~name : form_content =
+  match id with
+  | None -> []
+  | Some id ->
+    Eliom_content.Html5.F.([
+      int_input ~value:id ~name ~input_type:`Hidden ()
+    ])
 
 (******************************************************************************)
 
@@ -313,22 +339,27 @@ end
 
 module type Pre_form = sig
   include Base_options
+  type config = (a, param_names, template_data, deep_config) config'
   val pre_render : bool -> button_content option -> param_names or_display ->
-    (a, param_names, template_data, deep_config) config' ->
-    form_content Lwt.t
+    config:config -> config_override:config -> form_content Lwt.t
 end
 
 module type Form = sig
   include Pre_form
-  type config = (a, param_names, template_data, deep_config) config'
-  val params : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  type repr_with_id = repr * id_repr
+  type param_names_with_id = param_names * id_param_name
+  type id
+  val repr : a -> repr_with_id
+  val fresh_id : unit -> id
+  val set_config_once : ?id:id -> config -> unit
+  val params : string -> (repr_with_id, [`WithoutSuffix], param_names_with_id) Eliom_parameter.params_type
   val template_data : value:a option -> template_data Lwt.t template_data_fun
   val content :
-    ?submit:button_content ->
+    ?submit:button_content -> ?id:id ->
     ( a, param_names, template_data,
       unit,
       (unit,
-       param_names -> form_content Lwt.t) opt_component_configs_fun
+       param_names_with_id -> form_content Lwt.t) opt_component_configs_fun
     ) Local_config.fun_
   val display :
     value:a ->
@@ -341,8 +372,8 @@ module type Form = sig
       unit,
       (unit,
        config) opt_component_configs_fun ) Local_config.fun_
-  val get_handler : (a -> 'post -> 'res) -> (repr -> 'post -> 'res)
-  val post_handler : ('get -> a -> 'res) -> ('get -> repr -> 'res)
+  val get_handler : (?id:id -> a -> 'post -> 'res) -> (repr_with_id -> 'post -> 'res)
+  val post_handler : (?id:id -> 'get -> a -> 'res) -> ('get -> repr_with_id -> 'res)
 end
 
 (******************************************************************************)
@@ -366,51 +397,83 @@ end
 
 (******************************************************************************)
 
+module Make_id (Config : sig type t end) = struct
+  type id = int
+  let fresh_id =
+    let counter = ref 0 in
+    fun () ->
+      incr counter;
+      !counter
+  let configs : (id option, Config.t) Hashtbl.t = Hashtbl.create 13
+  let set_config_once ?id config =
+    Hashtbl.add configs id config
+  let get_config_once id =
+    try
+      let config = Hashtbl.find configs id in
+      Hashtbl.remove configs id;
+      Some config
+    with Not_found ->
+      None
+end
+
 module Make_base (Options : Base_options) = struct
   include Options
-  let params prefix = snd (params' (prefix^param_name_root))
+  type repr_with_id = repr * id_repr
+  type param_names_with_id = param_names * id_param_name
+  let params prefix : (repr_with_id, [`WithoutSuffix], param_names_with_id) Eliom_parameter.params_type =
+    Eliom_parameter.prod
+      (snd (params' (prefix^param_name_root)))
+      id_param_name
   let template_data ~value = pre_template_data ~value Lwt.return
   type config = (a, param_names, template_data, deep_config) config'
+  include Make_id (struct type t = config end)
+  let repr a = to_repr a, None
   let config :
       ( a, param_names, template_data, unit, (unit, config) opt_component_configs_fun
-      ) Local_config.fun_ =
+       ) Local_config.fun_  =
     Local_config.fun_
       (fun local () ->
         Options.opt_component_configs_fun
           (fun deep () ->
             { local ; deep }))
-  let pre_content pre_render ?submit =
+
+  let config_zero = {
+    local = Local_config.zero ;
+    deep = Options.default_deep_config ;
+  }
+
+  let pre_content pre_render ?submit ?id =
     Local_config.fun_
       (fun local () ->
         Options.opt_component_configs_fun
           (fun deep () ->
-            fun param_names ->
-              pre_render true submit
-                (`Param_names ("", param_names))
-                { local ; deep }))
+            fun (param_names, id_param_name) ->
+              let param_names = `Param_names ("", param_names) in
+              let config = { local ; deep } in
+              let config_override = option_get ~default:config_zero (get_config_once id) in
+              Lwt.map
+                (List.append (id_input ?id ~name:id_param_name))
+                (pre_render true submit param_names ~config ~config_override)))
+
   let pre_display pre_render ~value =
     Local_config.fun_
       (fun local () ->
         let local =
-          Local_config.({
-            local with
-              pre = {
-                local.pre with
-                  value = Some (`Default value)
-              }
-          })
+          let value = Some (`Default value) in
+          Local_config.update ?value local
         in
         Options.opt_component_configs_fun
           (fun deep () ->
-            pre_render true None
-              `Display
-              { local ; deep }))
+            let config = { local ; deep } in
+            pre_render true None `Display ~config ~config_override:config_zero))
+
   let get_handler f =
-    fun repr post ->
-      f (of_repr repr) post
+    fun (repr, id) post ->
+      f ?id (of_repr repr) post
+
   let post_handler f =
-    fun get repr ->
-      f get (of_repr repr)
+    fun get (repr, id) ->
+      f ?id get (of_repr repr)
 end
 }}
 

@@ -33,76 +33,61 @@ module Make :
 
     include Make_base (Options)
 
-    let field_renderings submit param_names value deep =
+    let field_renderings submit param_names deep deep_override opt_value =
       Lwt_list.map_p
         (fun (field_name,
               (module Field : Field with
                  type enclosing_a = a and
                  type enclosing_param_names = param_names and
                  type enclosing_deep_config = deep_config)) ->
-         let config =
-           let default = { local = Local_config.zero ; deep = Field.default_deep_config } in
-           let config = option_get ~default (Field.project_config deep) in
-           let value = option_or [
-             Local_config.(config.local.pre.value);
-             option_bind ~f:default_constant_put_over_option
-               (option_map ~f:(default_constant_map ~f:Field.project_value)
-                  value)
-           ] in
-           let label =
-             Some (option_get ~default:[pcdata (default_label_of_component_name field_name)]
-                     Local_config.(config.local.pre.label))
-           in
-           Local_config.({
-             config with local = {
-               config.local with pre = {
-                 config.local.pre with value ; label
-               }
-             }
-           })
-         in
-         lwt content =
-           let param_names =
-             match param_names with
-             | `Display -> `Display
-             | `Param_names (prefix, param_names) ->
-               `Param_names
-                 (Field.prefix prefix,
-                  Field.project_param_names param_names)
-           in
-           Field.pre_render false submit param_names config
-         in
-         Pre_local_config.bind config.local.Local_config.pre
-           (fun ?label ?annotation ?value ?a () ->
-             let default_constant = option_map ~f:default_constant value in
-             Lwt.return { Component_rendering.
-                          content; default_constant; a; label; annotation;
-                          selector=None }))
+          let open Local_config in
+          let default_config = { local = zero ; deep = Field.default_deep_config } in
+          let config = option_get ~default:default_config (Field.project_config deep) in
+          let config_override = option_get ~default:default_config (Field.project_config deep_override) in
+          lwt content =
+            let param_names =
+              match param_names with
+                | `Display -> `Display
+                | `Param_names (prefix, param_names) ->
+                  `Param_names
+                    (Field.prefix prefix,
+                     Field.project_param_names param_names)
+            in
+            Field.pre_render false submit param_names ~config ~config_override
+          in
+          let local =
+            let value = option_map ~f:(default_constant_map ~f:Field.project_value) opt_value in
+            Local_config.for_component ?value ~component_name:field_name
+              ~local:config.local ~local_override:config_override.local
+          in
+          Lwt.return { Component_rendering.content;
+                       surrounding = Pre_local_config.to_surrounding local.pre })
         (List.combine Options.component_names Options.fields)
 
-    let pre_render is_outmost submit param_names { local ; deep } =
-      let { Local_config.pre ; template ; template_data } = local in
-      let template = option_get ~default:Options.default_template template in
+    let pre_render is_outmost submit param_names ~config ~config_override =
+      let open Local_config in
+      let local = option_or_by_field config_override.local config.local in
+      let template = option_get ~default:Options.default_template local.template in
       lwt template_data =
         let default () =
-          let value = option_map ~f:default_constant_get pre.Local_config.value in
+          let value = option_map ~f:default_constant_get local.pre.value in
           apply_template_data_fun (pre_template_data ~value Lwt.return)
         in
-        option_get_lwt ~default template_data
+        option_get_lwt ~default local.template_data
       in
       let pre =
         let a =
           let classes = Eliom_content.Html5.F.a_class [form_class; form_record_class] in
           let maybe_hidden =
-            if option_map ~f:default_constant pre.Local_config.value = Some `Constant then
+            if option_map ~f:default_or_constant local.pre.value = Some `Constant then
               [ Eliom_content.Html5.F.a_style "display:  none" ]
             else
               []
           in
-          classes :: maybe_hidden @ option_get ~default:[] pre.Local_config.a
+          classes :: maybe_hidden @ option_get ~default:[] local.pre.a
         in
-        { pre with Local_config.a = Some a } in
-      lwt component_renderings = field_renderings submit param_names pre.Local_config.value deep in
+        { local.pre with a = Some a } in
+      lwt component_renderings = field_renderings submit param_names config.deep config_override.deep local.pre.value in
       Lwt.map (set_required_for_outmost ~is_outmost)
         (template
            (Template.arguments ~is_outmost ?submit ~config:pre

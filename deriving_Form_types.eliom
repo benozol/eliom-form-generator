@@ -5,7 +5,7 @@ open Deriving_Form_base
 
 type ('a, 'param_names, 'template_data) widget =
   param_names:'param_names or_display ->
-  ?value:'a default_constant_value ->
+  ?value:'a default_constant ->
   ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list ->
   template_data:'template_data ->
   unit ->
@@ -16,48 +16,45 @@ let atomic_template : (_, _, _) Template.t -> (_, _, _) widget -> (_, _, _) Temp
     Template.template
       (fun ~is_outmost ?submit ~config ~template_data ~param_names ~component_renderings () ->
         assert (component_renderings = []);
-        Pre_local_config.bind config
-          (fun ?label ?annotation ?value ?a () ->
-            lwt content = widget ~param_names ?value ?a ?template_data () in
-            if is_outmost then
-              let default_constant = option_map ~f:default_constant value in
-              let component_renderings = [
-                { Component_rendering.
-                  label; content; annotation; a; default_constant;
-                  selector=None }
-              ] in
-              template
-                (Template.arguments
-                   ~is_outmost ?submit ~config ~template_data
-                   ~param_names ~component_renderings ())
-            else
-              Lwt.return content))
+        let { Local_config.value; a; _ } = config in
+        lwt content = widget ~param_names ?value ?a ?template_data () in
+        if is_outmost then
+          let component_renderings = [ {
+            Component_rendering.content;
+            surrounding = Pre_local_config.to_surrounding config
+          } ] in
+          template
+            (Template.arguments
+               ~is_outmost ?submit ~config ~template_data
+               ~param_names ~component_renderings ())
+        else
+          Lwt.return content)
 
 
 module type Atomic_options = sig
   type a
-  type param_names
+  type param_name
   include Template_data with type a := a
-  val default_widget : (a, param_names, template_data) widget
-  val params : string -> (a, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  val default_widget : (a, param_name, template_data) widget
+  val params_type : string -> (a, [`WithoutSuffix], param_name) Eliom_parameter.params_type
 end
 
 module Make_atomic :
   functor (Atomic_options : Atomic_options) -> sig
     module Atomic_options : Atomic_options with
       type a = Atomic_options.a and
-      type param_names = Atomic_options.param_names and
+      type param_name = Atomic_options.param_name and
       type template_data = Atomic_options.template_data and
       type 'res template_data_fun = 'res Atomic_options.template_data_fun
     include Form with
       type a = Atomic_options.a and
       type repr = Atomic_options.a and
-      type param_names = Atomic_options.param_names and
+      type param_names = Atomic_options.param_name and
       type template_data = Atomic_options.template_data and
       type 'res template_data_fun = 'res Atomic_options.template_data_fun and
       type deep_config = unit and
       type config =
-        ( Atomic_options.a, Atomic_options.param_names,
+        ( Atomic_options.a, Atomic_options.param_name,
           Atomic_options.template_data, unit
         ) config' and
       type ('arg, 'res) opt_component_configs_fun = 'arg -> 'res
@@ -67,7 +64,8 @@ module Make_atomic :
     include Make_base
       (struct
         include Atomic_options
-        let params' prefix = prefix, params prefix
+        type param_names = param_name
+        let params' prefix = prefix, params_type prefix
         let component_names = []
         let default_deep_config = ()
         let opt_component_configs_fun k x = k () x
@@ -78,18 +76,19 @@ module Make_atomic :
         let to_repr x = x
         let default_template = atomic_template default_template default_widget
        end)
-    let pre_render is_outmost submit param_names {local; deep=()} =
-      let { Local_config.pre; template; template_data } = local in
-      let template = option_get ~default:default_template template in
+    let pre_render is_outmost submit param_names ~config ~config_override =
+      let open Local_config in
+      let local = option_or_by_field config_override.local config.local in
+      let template = option_get ~default:default_template local.template in
       lwt template_data =
         let default () =
-          let value = option_map ~f:default_constant_get pre.Local_config.value in
+          let value = option_map ~f:default_constant_get local.pre.value in
           apply_template_data_fun (pre_template_data ~value Lwt.return)
         in
-        option_get_lwt ~default template_data
+        option_get_lwt ~default local.template_data
       in
       template
-        (Template.arguments ~is_outmost ?submit ~config:pre
+        (Template.arguments ~is_outmost ?submit ~config:local.pre
            ~template_data ~param_names ~component_renderings:[] ())
     let display = pre_display pre_render
     let content = pre_content pre_render
@@ -133,12 +132,12 @@ module Form_string =
   Make_atomic
     (struct
       type a = string
-      type param_names = [`One of string] Eliom_parameter.param_name
+      type param_name = [`One of string] Eliom_parameter.param_name
       type template_data = string option
       type 'res template_data_fun = ?required_pattern:string -> unit -> 'res
       let pre_template_data ~value:_ k ?required_pattern () = k required_pattern
       let apply_template_data_fun (f : _ template_data_fun) = f ()
-      let params = Eliom_parameter.string
+      let params_type = Eliom_parameter.string
       let default_widget = form_string_default_widget false
      end)
 
@@ -146,8 +145,8 @@ module Form_int =
   Make_atomic
     (struct
       type a = int
-      type param_names = [`One of int] Eliom_parameter.param_name
-      let params = Eliom_parameter.int
+      type param_name = [`One of int] Eliom_parameter.param_name
+      let params_type = Eliom_parameter.int
       type template_data = unit
       type 'res template_data_fun = 'res
       let pre_template_data ~value:_ k = k ()
@@ -235,8 +234,8 @@ module Form_int64 =
   Make_atomic
     (struct
       type a = int64
-      type param_names = [`One of int64] Eliom_parameter.param_name
-      let params = Eliom_parameter.int64
+      type param_name = [`One of int64] Eliom_parameter.param_name
+      let params_type = Eliom_parameter.int64
       type template_data = (int64 * pcdata * bool) list option
       type 'res template_data_fun = ?from_list:(int64 * pcdata * bool) list -> unit -> 'res
       let pre_template_data ~value:_ k ?from_list () = k from_list
@@ -250,8 +249,8 @@ module Form_int32 =
   Make_atomic
     (struct
       type a = int32
-      type param_names = [`One of int32] Eliom_parameter.param_name
-      let params = Eliom_parameter.int32
+      type param_name = [`One of int32] Eliom_parameter.param_name
+      let params_type = Eliom_parameter.int32
       type template_data = (int32 * pcdata * bool) list option
       type 'res template_data_fun = ?from_list:(int32 * pcdata * bool) list -> unit -> 'res
       let pre_template_data ~value:_ k ?from_list () = k from_list
@@ -265,9 +264,9 @@ module Form_unit =
   Make_atomic
     (struct
       type a = unit
-      type param_names = unit
+      type param_name = unit
       include Template_data_unit (struct type t = a end)
-      let params _ = Eliom_parameter.unit
+      let params_type _ = Eliom_parameter.unit
       let default_widget =
         fun ~param_names:_ ?value:_ ?a:_ ~template_data:() () ->
           Lwt.return []

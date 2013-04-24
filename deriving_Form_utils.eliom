@@ -68,14 +68,15 @@ let maybe_get_option_map really opt f =
 let some x = Some x
 let is_some = function Some _ -> true | _ -> false
 let from_some = function Some x -> x | _ -> failwith "from_some"
-let rec option_or = function
-  | [] -> None
-  | None :: rest -> option_or rest
-  | some :: _ -> some
+let option_or o1 o2 =
+  if o1 <> None
+  then o1
+  else o2
 let list_filter_some li =
   List.map (option_get' ~default:(fun () -> assert false))
     (List.filter (fun x -> x <> None) li)
 let list_singleton x = [x]
+let cons x xs = x :: xs
 
 let option_get_lwt : default:(unit -> 'a Lwt.t) -> 'a option -> 'a Lwt.t =
   fun ~default option ->
@@ -88,6 +89,7 @@ let map_snd ~f (a, b) = a, f b
 let identity x = x
 let constant x _ = x
 let flip f x y = f y x
+let (//) = flip
 let (-|) f g = fun x -> f (g x)
 let (@@) f x = f x
 

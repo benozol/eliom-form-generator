@@ -36,12 +36,11 @@ module Make
 
   include Make_base (Options)
 
-  let variant_renderings submit (param_names : param_names or_display) value deep =
-    let variant_drop_down =
-      let required_label = "Select an option" in
-      let open Eliom_content.Html5.F in
-      let content = [
-        match param_names with
+  let variant_selector param_names value =
+    let required_label = "Select an option" in
+    let open Eliom_content.Html5.F in
+    let content =
+      match param_names with
         | `Param_names (_prefix, param_names) ->
           let name = Options.project_selector_param_name param_names in
           let options =
@@ -73,7 +72,7 @@ module Make
               Deriving_Form_base.connect_select_variant select_node;
               Lwt.return ())
           }};
-          div ~a:[a_class ["contains_select"]] [ select ; input_marker ]
+          [ div ~a:[a_class ["contains_select"]] [ select ; input_marker ] ]
         | `Display ->
           let variant_name =
             match option_map ~f:default_constant_get value with
@@ -89,112 +88,101 @@ module Make
                    -> Variant.is_constructor value)
                    (List.combine Options.component_names Options.variants))
           in
-          pcdata variant_name
-      ] in
-      { Component_rendering.
-        content; label=None; selector=None; annotation=None; a=None; default_constant=None }
-    in
-    lwt variants =
-      Lwt.map list_filter_some
-        (Lwt_list.map_p
-           (fun (variant_name,
-                 (module Variant : Variant with
-                    type enclosing_a = a and
-                    type enclosing_param_names = param_names and
-                    type enclosing_deep_config = deep_config)) ->
-             lwt config =
-               let config_from_deep =
-                 option_get
-                   ~default:{ local = Local_config.zero;
-                              deep = Variant.default_deep_config }
-                   (Variant.project_config deep)
-               in
-             lwt local =
-               lwt default_local =
-                 let value =
-                  option_bind ~f:default_constant_put_over_option
-                    (option_map
-                       ~f:(default_constant_map ~f:Variant.project_value)
-                       value)
-                 in
-                 lwt template_data =
-                   let value = option_map ~f:default_constant_get value in
-                   Lwt.map some
-                     (Variant.apply_template_data_fun
-                        (Variant.pre_template_data ~value Lwt.return))
-                 in
-                 Lwt.return
-                   { Local_config.
-                     pre = { Pre_local_config.value; label=None; annotation=None; a=None };
-                     template = None;
-                     template_data }
-               in
-               Lwt.return
-                 (Local_config.option_or_by_field [
-                   config_from_deep.local;
-                   default_local;
-                  ])
-             in
-             Lwt.return { config_from_deep with local }
-           in
+          [ pcdata variant_name ]
+      in
+      Component_rendering.({ content; surrounding = surrounding_zero })
+
+  let variant_renderings submit (param_names : param_names or_display) deep deep_override opt_value =
+    Lwt.map list_filter_some
+      (Lwt_list.map_p
+         (fun (variant_name,
+               (module Variant : Variant with
+                  type enclosing_a = a and
+                  type enclosing_param_names = param_names and
+                  type enclosing_deep_config = deep_config)) ->
            let is_constructor =
              option_get_map ~default:false
                ~f:(fun dc -> Variant.is_constructor (default_constant_get dc))
-               value
+               opt_value
            in
            if param_names = `Display && not is_constructor then
              Lwt.return None
            else
-             Pre_local_config.bind config.local.Local_config.pre
-               (fun ?label ?annotation ?value:_ ?a:_ () ->
-                 let selector = None in
-                 lwt content =
-                   let param_names =
-                     match param_names with
-                     | `Display -> `Display
-                     | `Param_names (prefix, param_names) ->
-                       `Param_names
-                         (Variant.prefix prefix,
-                          Variant.project_param_names param_names)
-                   in
-                   Variant.pre_render false submit
-                     param_names config
-                 in
-                 let a = Some [
-                   Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
-                   Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
-                 ] in
-                 Lwt.return
-                   (Some ({ Component_rendering.
-                            a; selector; label; annotation; content;
-                            default_constant=None }))))
+             let default_config = { local = Local_config.zero ; deep = Variant.default_deep_config } in
+             let config = option_get ~default:default_config (Variant.project_config deep) in
+             let config_override =
+               option_get ~default:default_config
+                 (Variant.project_config deep_override) in
+             let local =
+               let local =
+                 let value = option_map ~f:(default_constant_map ~f:Variant.project_value)
+                   opt_value in
+                 Local_config.for_component ?value ~component_name:variant_name
+                   ~local:config.local ~local_override:config_override.local
+               in
+               let a = [
+                 Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
+                 Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
+               ] @ option_get ~default:[] Local_config.(local.pre.a) in
+               Local_config.update ~a local
+             in
+             lwt content =
+               let param_names =
+                 match param_names with
+                   | `Display -> `Display
+                   | `Param_names (prefix, param_names) ->
+                     `Param_names
+                       (Variant.prefix prefix,
+                        Variant.project_param_names param_names)
+               in
+               Variant.pre_render false submit
+                 param_names ~config ~config_override
+             in
+             Lwt.return
+               (Some { Component_rendering.content;
+                       surrounding = Pre_local_config.to_surrounding local.Local_config.pre }))
          (List.combine Options.component_names Options.variants))
+
+  let default_template args =
+    let drop_labels cr =
+      let open Component_rendering in
+      { cr with surrounding = { cr.surrounding with label = None } }
     in
-    Lwt.return (variant_drop_down :: variants)
+    let args = Template.({
+      args with component_renderings =
+        List.map drop_labels args.component_renderings
+    }) in
+    default_template args
 
-
-
-  let pre_render is_outmost submit param_names { local ; deep } =
-    let { Local_config.pre ; template ; template_data } = local in
-    let template = option_get ~default:default_template template in
+  let pre_render is_outmost submit param_names ~config ~config_override =
+    let open Local_config in
+    let local = option_or_by_field config_override.local config.local in
+    let template = option_get ~default:default_template local.template in
     lwt template_data =
       let default () =
-        let value = option_map ~f:default_constant_get pre.Local_config.value in
+        let value = option_map ~f:default_constant_get local.pre.value in
         apply_template_data_fun (pre_template_data ~value Lwt.return)
       in
-      option_get_lwt ~default template_data
+      option_get_lwt ~default local.template_data
+    in
+    lwt component_renderings =
+      Lwt.map
+        (cons (variant_selector param_names local.pre.value))
+        (variant_renderings submit param_names config.deep config_override.deep local.pre.value)
     in
     let pre =
-      let a =
-        let hidden, value' = hidden_value pre.Local_config.value in
+      let here_a =
+        let hidden, value' = hidden_value local.pre.value in
+        let a_form_sum_class = Eliom_content.Html5.F.a_class [ form_sum_class ] in
         let a_form_sum_variant =
           match value' with
           | Some default ->
             let variant_name, _ =
               List.find
                 (fun (_, variant) ->
-                  let module Variant = (val (variant : (Options.a, Options.param_names,
-                                                        Options.deep_config) variant))
+                  let module Variant =
+                        (val (variant : (Options.a, Options.param_names,
+                                         Options.deep_config) variant))
                   in Variant.is_constructor default)
                 (List.combine Options.component_names Options.variants)
             in
@@ -202,17 +190,15 @@ module Make
                 variant_name ]
           | None -> []
         in
-        let form_sum = Eliom_content.Html5.F.a_class [ form_sum_class ] in
-        let maybe_hidden =
+        let maybe_style_hidden =
           if hidden then
             [ Eliom_content.Html5.F.a_style "display: none" ]
           else []
         in
-        Some (form_sum :: a_form_sum_variant @ maybe_hidden @ option_get ~default:[] pre.Local_config.a)
+        a_form_sum_class :: a_form_sum_variant @ maybe_style_hidden
       in
-      { pre with Local_config.a }
+      { local.pre with a = Some (here_a @ option_get ~default:[] local.pre.a) }
     in
-    lwt component_renderings = variant_renderings submit param_names pre.Local_config.value deep in
     Lwt.map (set_required_for_outmost ~is_outmost)
       (template
          (Template.arguments ~is_outmost ?submit ~config:pre
