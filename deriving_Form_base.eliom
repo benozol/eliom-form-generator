@@ -293,11 +293,11 @@ let id_input ?id ~name : form_content =
 
 (******************************************************************************)
 
-module type Repr = sig
+module type Raw_repr = sig
   type t
-  type repr
-  val of_repr : repr -> t
-  val to_repr : t -> repr
+  type raw_repr
+  val of_raw_repr : raw_repr -> t
+  val to_raw_repr : t -> raw_repr
 end
 
 module type Template_data = sig
@@ -324,56 +324,56 @@ module Template_data_unit :
 
 module type Base_options = sig
   type a
-  type param_names
+  type raw_param_names
   type deep_config
   type ('arg, 'res) opt_component_configs_fun
-  include Repr with type t := a
+  include Raw_repr with type t := a
   include Template_data with type a := a
-  val params' : string -> string * (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
+  val params' : string -> string * (raw_repr, [`WithoutSuffix], raw_param_names) Eliom_parameter.params_type
   val opt_component_configs_fun : (deep_config -> 'arg -> 'res) ->
     ('arg, 'res) opt_component_configs_fun
   val default_deep_config : deep_config
-  val default_template : (a, param_names, template_data) Template.t
+  val default_template : (a, raw_param_names, template_data) Template.t
   val component_names : string list
 end
 
 module type Pre_form = sig
   include Base_options
-  type config = (a, param_names, template_data, deep_config) config'
-  val pre_render : bool -> button_content option -> param_names or_display ->
+  type config = (a, raw_param_names, template_data, deep_config) config'
+  val pre_render : bool -> button_content option -> raw_param_names or_display ->
     config:config -> config_override:config -> form_content Lwt.t
 end
 
 module type Form = sig
   include Pre_form
-  type repr_with_id = repr * id_repr
-  type param_names_with_id = param_names * id_param_name
+  type repr = raw_repr * id_repr
+  type param_names = raw_param_names * id_param_name
   type id
-  val repr : a -> repr_with_id
+  val repr : a -> repr
   val fresh_id : unit -> id
   val set_config_once : ?id:id -> config -> unit
-  val params : string -> (repr_with_id, [`WithoutSuffix], param_names_with_id) Eliom_parameter.params_type
+  val params : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
   val template_data : value:a option -> template_data Lwt.t template_data_fun
   val content :
     ?submit:button_content -> ?id:id ->
-    ( a, param_names, template_data,
+    ( a, raw_param_names, template_data,
       unit,
       (unit,
-       param_names_with_id -> form_content Lwt.t) opt_component_configs_fun
+       param_names -> form_content Lwt.t) opt_component_configs_fun
     ) Local_config.fun_
   val display :
     value:a ->
-    ( a, param_names, template_data,
+    ( a, raw_param_names, template_data,
       unit,
       (unit,
        form_content Lwt.t) opt_component_configs_fun ) Local_config.fun_
   val config :
-    ( a, param_names, template_data,
+    ( a, raw_param_names, template_data,
       unit,
       (unit,
        config) opt_component_configs_fun ) Local_config.fun_
-  val get_handler : (?id:id -> a -> 'post -> 'res) -> (repr_with_id -> 'post -> 'res)
-  val post_handler : (?id:id -> 'get -> a -> 'res) -> ('get -> repr_with_id -> 'res)
+  val get_handler : (?id:id -> a -> 'post -> 'res) -> (repr -> 'post -> 'res)
+  val post_handler : (?id:id -> 'get -> a -> 'res) -> ('get -> repr -> 'res)
 end
 
 (******************************************************************************)
@@ -381,12 +381,12 @@ end
 module type Field = sig
   include Pre_form
   type enclosing_a
-  type enclosing_param_names
+  type enclosing_raw_param_names
   type enclosing_deep_config
   val project_value : enclosing_a -> a option
-  val project_param_names : enclosing_param_names -> param_names
+  val project_param_names : enclosing_raw_param_names -> raw_param_names
   val project_config : enclosing_deep_config ->
-    (a, param_names, template_data, deep_config) config' option
+    (a, raw_param_names, template_data, deep_config) config' option
   val prefix : string -> string
 end
 
@@ -418,18 +418,18 @@ end
 
 module Make_base (Options : Base_options) = struct
   include Options
-  type repr_with_id = repr * id_repr
-  type param_names_with_id = param_names * id_param_name
-  let params prefix : (repr_with_id, [`WithoutSuffix], param_names_with_id) Eliom_parameter.params_type =
+  type repr = raw_repr * id_repr
+  type param_names = raw_param_names * id_param_name
+  let params prefix : (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type =
     Eliom_parameter.prod
       (snd (params' (prefix^param_name_root)))
       id_param_name
   let template_data ~value = pre_template_data ~value Lwt.return
-  type config = (a, param_names, template_data, deep_config) config'
+  type config = (a, raw_param_names, template_data, deep_config) config'
   include Make_id (struct type t = config end)
-  let repr a = to_repr a, None
+  let repr a = to_raw_repr a, None
   let config :
-      ( a, param_names, template_data, unit, (unit, config) opt_component_configs_fun
+      ( a, raw_param_names, template_data, unit, (unit, config) opt_component_configs_fun
        ) Local_config.fun_  =
     Local_config.fun_
       (fun local () ->
@@ -469,11 +469,11 @@ module Make_base (Options : Base_options) = struct
 
   let get_handler f =
     fun (repr, id) post ->
-      f ?id (of_repr repr) post
+      f ?id (of_raw_repr repr) post
 
   let post_handler f =
     fun get (repr, id) ->
-      f ?id get (of_repr repr)
+      f ?id get (of_raw_repr repr)
 end
 }}
 

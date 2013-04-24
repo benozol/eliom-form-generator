@@ -48,8 +48,8 @@ module Make_atomic :
       type 'res template_data_fun = 'res Atomic_options.template_data_fun
     include Form with
       type a = Atomic_options.a and
-      type repr = Atomic_options.a and
-      type param_names = Atomic_options.param_name and
+      type raw_repr = Atomic_options.a and
+      type raw_param_names = Atomic_options.param_name and
       type template_data = Atomic_options.template_data and
       type 'res template_data_fun = 'res Atomic_options.template_data_fun and
       type deep_config = unit and
@@ -64,16 +64,16 @@ module Make_atomic :
     include Make_base
       (struct
         include Atomic_options
-        type param_names = param_name
+        type raw_param_names = param_name
         let params' prefix = prefix, params_type prefix
         let component_names = []
         let default_deep_config = ()
         let opt_component_configs_fun k x = k () x
         type ('arg, 'res) opt_component_configs_fun = 'arg -> 'res
         type deep_config = unit
-        type repr = a
-        let of_repr x = x
-        let to_repr x = x
+        type raw_repr = a
+        let of_raw_repr x = x
+        let to_raw_repr x = x
         let default_template = atomic_template default_template default_widget
        end)
     let pre_render is_outmost submit param_names ~config ~config_override =

@@ -5,25 +5,25 @@ open Deriving_Form_base
 type ('a, 'param_names, 'deep_config) field =
   (module Field with
     type enclosing_a = 'a and
-    type enclosing_param_names = 'param_names and
+    type enclosing_raw_param_names = 'param_names and
     type enclosing_deep_config = 'deep_config)
 
 module type Record_options = sig
   include Base_options
-  val fields : (a, param_names, deep_config) field list
+  val fields : (a, raw_param_names, deep_config) field list
 end
 
 module Make :
   functor (Options : Record_options) ->
     Form with
       type a = Options.a and
-      type repr = Options.repr and
-      type param_names = Options.param_names and
+      type raw_repr = Options.raw_repr and
+      type raw_param_names = Options.raw_param_names and
       type deep_config = Options.deep_config and
       type template_data = Options.template_data and
       type 'res template_data_fun = 'res Options.template_data_fun and
       type config =
-        ( Options.a, Options.param_names,
+        ( Options.a, Options.raw_param_names,
           Options.template_data, Options.deep_config
         ) config' and
       type ('arg, 'res) opt_component_configs_fun =
@@ -38,7 +38,7 @@ module Make :
         (fun (field_name,
               (module Field : Field with
                  type enclosing_a = a and
-                 type enclosing_param_names = param_names and
+                 type enclosing_raw_param_names = raw_param_names and
                  type enclosing_deep_config = deep_config)) ->
           let open Local_config in
           let default_config = { local = zero ; deep = Field.default_deep_config } in

@@ -171,10 +171,10 @@ module Builder (Loc : Defs.Loc) = struct
               [component_module_name field_name])
             component_names
         in
-        let param_names_ctyp =
+        let raw_param_names_ctyp =
           let basic =
             tuple_type
-              (List.map (Helpers.Untranslate'.expr % type_expr_from_qname % add_prefix "param_names")
+              (List.map (Helpers.Untranslate'.expr % type_expr_from_qname % add_prefix "raw_param_names")
                  component_module_names)
           in
           match repr with
@@ -194,9 +194,9 @@ module Builder (Loc : Defs.Loc) = struct
             (List.map (fun _ -> <:expr< None >>)
                component_module_names)
         in
-        let repr_ctyp =
+        let raw_repr_ctyp =
           let tuple =
-            List.map (type_expr_from_qname % add_prefix "repr")
+            List.map (type_expr_from_qname % add_prefix "raw_repr")
               component_module_names
           in
           match repr with
@@ -222,14 +222,14 @@ module Builder (Loc : Defs.Loc) = struct
               <:expr< $t$, $sofar$ >>)
             (List.map
                (fun field_name ->
-                 <:expr< $uid:component_module_name field_name$ . to_repr $lid:field_name$ >>)
+                 <:expr< $uid:component_module_name field_name$ . to_raw_repr $lid:field_name$ >>)
                component_names)
         in
         let pattern_from_name name = <:patt< $lid:String.uncapitalize name$ >> in
         let from_tuple_bindings =
           List.map
             (fun field_name ->
-              field_name, <:expr< $uid:component_module_name field_name$ . of_repr $lid:field_name$ >>)
+              field_name, <:expr< $uid:component_module_name field_name$ . of_raw_repr $lid:field_name$ >>)
             component_names
         in
         let component_name_strings =
@@ -382,7 +382,7 @@ module Builder (Loc : Defs.Loc) = struct
               <:module_expr<
                 struct
                   type enclosing_a = a
-                  type enclosing_param_names = param_names
+                  type enclosing_raw_param_names = raw_param_names
                   type enclosing_deep_config = deep_config
                   let project_value = $project_value_expr component_name$
                   let project_param_names = $project_param_names_expr component_name$
@@ -414,7 +414,7 @@ module Builder (Loc : Defs.Loc) = struct
             $component_module_decls$
           >>
         in
-        let to_repr_expr =
+        let to_raw_repr_expr =
           match repr with
           | Type.Record record_fields ->
               <:expr<
@@ -443,7 +443,7 @@ module Builder (Loc : Defs.Loc) = struct
                              if variant_name = variant_name' then
                                <:expr<
                                  Some ($uid:component_module_name variant_name$ .
-                                         to_repr $component_expr$)
+                                         to_raw_repr $component_expr$)
                                >>
                              else
                                <:expr< None >>)
@@ -456,7 +456,7 @@ module Builder (Loc : Defs.Loc) = struct
             in
             <:expr< function $Ast.mcOr_of_list match_cases$ >>
         in
-        let of_repr_expr =
+        let of_raw_repr_expr =
           match repr with
             | Type.Record _record_fields ->
               <:expr<
@@ -491,14 +491,14 @@ module Builder (Loc : Defs.Loc) = struct
                       else
                         <:expr<
                           $uid:variant_name$
-                            ($uid:component_module_name variant_name$ . of_repr $component_expr$)
+                            ($uid:component_module_name variant_name$ . of_raw_repr $component_expr$)
                         >>
                     in
                     match_case pattern expr)
                   component_names component_types
               in
               let failure =
-                let message = Printf.sprintf "%s: of_repr" (form_module_name type_name) in
+                let message = Printf.sprintf "%s: of_raw_repr" (form_module_name type_name) in
                 match_case ( <:patt< _ >> ) ( <:expr< failwith $str:message$ >> )
               in
               let match_cases = match_cases @ [ failure ] in
@@ -518,14 +518,14 @@ module Builder (Loc : Defs.Loc) = struct
             module Options = struct
               type a = $lid:type_name$
               ;; $Ast.stSem_of_list component_module_decls$
-              type param_names = $param_names_ctyp$
+              type raw_param_names = $raw_param_names_ctyp$
               type deep_config = $deep_config_ctyp$
               include Template_data_unit (struct type t = a end)
               let default_deep_config = $default_deep_config_expr$
-              type repr = $repr_ctyp$
+              type raw_repr = $raw_repr_ctyp$
               let component_names = $Helpers.expr_list component_name_strings$
-              let of_repr = $of_repr_expr$
-              let to_repr = $to_repr_expr$
+              let of_raw_repr = $of_raw_repr_expr$
+              let to_raw_repr = $to_raw_repr_expr$
               ;; $Ast.stSem_of_list prefix_decls$
               let params' = $params'_expr$
               type ('arg, 'res) opt_component_configs_fun =
@@ -534,7 +534,7 @@ module Builder (Loc : Defs.Loc) = struct
                 $exp:opt_component_configs_fun$
               let default_template = default_template
               let $lid:components_list_name$ :
-                (a, param_names, deep_config) $ctyp_of_qname component_type_name$ list =
+                (a, raw_param_names, deep_config) $ctyp_of_qname component_type_name$ list =
                 $fields_expr$
               ;; $project_selector_param_name_decl$
             end

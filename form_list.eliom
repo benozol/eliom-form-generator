@@ -111,26 +111,26 @@
     functor (Form : Form) ->
       Form with
         type a = Form.a list and
-        type repr = Form.repr list and
-        type param_names = Form.param_names list_param_names and
+        type raw_repr = Form.raw_repr list and
+        type raw_param_names = Form.raw_param_names list_param_names and
         type deep_config = Form.config option and
         type template_data = unit and
         type 'res template_data_fun = 'res and
         type config =
-          ( Form.a list, Form.param_names list_param_names,
+          ( Form.a list, Form.raw_param_names list_param_names,
             unit, Form.config option
           ) config' and
         type ('arg, 'res) opt_component_configs_fun =
           ?elt:Form.config -> 'arg -> 'res =
     functor (Form : Form) -> struct
       type a = Form.a list
-      type repr = Form.repr list
-      type param_names = Form.param_names list_param_names
-      type repr_with_id = repr * id_repr
-      type param_names_with_id = param_names * id_param_name
+      type raw_repr = Form.raw_repr list
+      type raw_param_names = Form.raw_param_names list_param_names
+      type repr = raw_repr * id_repr
+      type param_names = raw_param_names * id_param_name
       type deep_config = Form.config option
       include Template_data_unit (struct type t = a end)
-      type config = (a, param_names, template_data, deep_config) config'
+      type config = (a, raw_param_names, template_data, deep_config) config'
       include Make_id (struct type t = config end)
       let default_deep_config = None
       let template_data ~value:_ = Lwt.return ()
@@ -305,13 +305,13 @@
               (fun deep () ->
                 { local ; deep }))
 
-      let to_repr = List.map Form.to_repr
-      let of_repr = List.map Form.of_repr
-      let repr a = to_repr a, None
-      let get_handler f = fun (get, id) post -> f ?id (of_repr get) post
-      let post_handler f = fun get (post, id) -> f ?id get (of_repr post)
+      let to_raw_repr = List.map Form.to_raw_repr
+      let of_raw_repr = List.map Form.of_raw_repr
+      let repr a = to_raw_repr a, None
+      let get_handler f = fun (get, id) post -> f ?id (of_raw_repr get) post
+      let post_handler f = fun get (post, id) -> f ?id get (of_raw_repr post)
 
-      let default_template : (a,param_names,template_data) Template.t =
+      let default_template : (a, raw_param_names, template_data) Template.t =
         default_template
 
     end

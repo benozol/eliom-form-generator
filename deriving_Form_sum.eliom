@@ -8,26 +8,26 @@ type selector_param_name = [`One of string] Eliom_parameter.param_name
 type ('a, 'param_names, 'deep_config) variant =
   (module Variant with
     type enclosing_a = 'a and
-    type enclosing_param_names = 'param_names and
+    type enclosing_raw_param_names = 'param_names and
     type enclosing_deep_config = 'deep_config)
 
 module type Sum_options = sig
   include Base_options
-  val variants : (a, param_names, deep_config) variant list
-  val project_selector_param_name : param_names -> selector_param_name
+  val variants : (a, raw_param_names, deep_config) variant list
+  val project_selector_param_name : raw_param_names -> selector_param_name
 end
 
 module Make
   : functor (Options : Sum_options) ->
       Form with
         type a = Options.a and
-        type repr = Options.repr and
-        type param_names = Options.param_names and
+        type raw_repr = Options.raw_repr and
+        type raw_param_names = Options.raw_param_names and
         type deep_config = Options.deep_config and
         type template_data = Options.template_data and
         type 'res template_data_fun = 'res Options.template_data_fun and
         type config =
-          ( Options.a, Options.param_names,
+          ( Options.a, Options.raw_param_names,
             Options.template_data, Options.deep_config
           ) config' and
         type ('arg, 'res) opt_component_configs_fun =
@@ -48,7 +48,7 @@ module Make
               (fun variant_name
                 (module Variant : Variant with
                    type enclosing_a = a and
-                   type enclosing_param_names = param_names and
+                   type enclosing_raw_param_names = raw_param_names and
                    type enclosing_deep_config = deep_config) ->
                 let selected =
                   option_get_map ~default:false
@@ -83,7 +83,7 @@ module Make
                    (fun (_variant_name,
                          (module Variant : Variant with
                             type enclosing_a = a and
-                            type enclosing_param_names = param_names and
+                            type enclosing_raw_param_names = raw_param_names and
                             type enclosing_deep_config = deep_config))
                    -> Variant.is_constructor value)
                    (List.combine Options.component_names Options.variants))
@@ -92,13 +92,13 @@ module Make
       in
       Component_rendering.({ content; surrounding = surrounding_zero })
 
-  let variant_renderings submit (param_names : param_names or_display) deep deep_override opt_value =
+  let variant_renderings submit (param_names : raw_param_names or_display) deep deep_override opt_value =
     Lwt.map list_filter_some
       (Lwt_list.map_p
          (fun (variant_name,
                (module Variant : Variant with
                   type enclosing_a = a and
-                  type enclosing_param_names = param_names and
+                  type enclosing_raw_param_names = raw_param_names and
                   type enclosing_deep_config = deep_config)) ->
            let is_constructor =
              option_get_map ~default:false
@@ -181,7 +181,7 @@ module Make
               List.find
                 (fun (_, variant) ->
                   let module Variant =
-                        (val (variant : (Options.a, Options.param_names,
+                        (val (variant : (Options.a, Options.raw_param_names,
                                          Options.deep_config) variant))
                   in Variant.is_constructor default)
                 (List.combine Options.component_names Options.variants)
