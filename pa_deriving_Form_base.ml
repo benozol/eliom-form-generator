@@ -143,7 +143,7 @@ module Builder (Loc : Defs.Loc) = struct
   let generate : Type.decl list -> Ast.str_item =
     let (%) f g = fun x -> f (g x) in
     let for_decl : Type.decl -> Ast.str_item  = function
-      | type_name, [], `Fresh (None, repr, _), [], _ ->
+      | type_name, [], `Fresh (_, repr, _), [], _ ->
         let component_names, component_types =
           let fields =
             match repr with
