@@ -3,6 +3,8 @@
 open Deriving_Form_utils
 open Deriving_Form_base
 
+let required_label = "please select"
+
 type ('a, 'param_names, 'template_data) widget =
   param_names:'param_names or_display ->
   ?value:'a default_constant ->
@@ -94,37 +96,52 @@ module Make_atomic :
     let content = pre_content pre_render
   end
 
-let form_string_default_widget can_be_empty : (string,_,_) widget =
+let form_string_default_widget can_be_empty : (string, _, _) widget =
   let open Eliom_content.Html5.F in
-  fun ~param_names ?value ?(a=[]) ~template_data:opt_pattern () ->
+  fun ~param_names ?value ?(a=[]) ~template_data:opt_pattern_or_from_list () ->
     let not_required_class_maybe, required_maybe =
       if can_be_empty then
         [component_not_required_class], []
       else
         [], [a_required `Required]
     in
-    let pattern_maybe =
-      option_get ~default:[]
-        (option_map
-           ~f:(fun p -> [a_pattern p])
-           opt_pattern)
-    in
-    let a =
-      let a = (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
-      a_class not_required_class_maybe :: required_maybe @ pattern_maybe @ a
-    in
+    let local_class_a = a_class not_required_class_maybe in
     let hidden, value' = hidden_value value in
     match param_names with
     | `Param_names (_, param_names) ->
       let a = if hidden then a_hidden `Hidden :: a else a in
-      Lwt.return [
-        string_input ~a ~name:param_names ?value:value' ~input_type:`Text ();
-        input_marker;
-      ]
+      let input pattern_maybe =
+        let a = local_class_a :: required_maybe @ pattern_maybe @ (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
+        Lwt.return [
+          string_input ~a ~name:param_names ?value:value' ~input_type:`Text ();
+          input_marker;
+        ]
+      in
+      (match opt_pattern_or_from_list with
+        | None -> input []
+        | Some (`Required_pattern required_pattern) ->
+          input [a_pattern required_pattern]
+        | Some (`From_list options) ->
+          let a = local_class_a :: (a :> Html5_types.select_attrib Eliom_content.Html5.attrib list) in
+          let mk_option (abb, label, selected) =
+            Option ([], abb, Some label, selected)
+          in
+          (match options with
+            | option :: options ->
+              Lwt.return [
+                string_select ~a ~name:param_names ~required:(pcdata required_label)
+                  (mk_option option) (List.map mk_option options);
+                input_marker;
+              ]
+            | [] ->
+              Lwt.return [
+                select ~a:(required_maybe @ a) ~name:param_names
+                  (mk_option ("", (pcdata required_label), false)) []
+              ]))
     | `Display ->
       if not hidden then
         Lwt.return
-          (option_get_map ~default:[] ~f:(fun x -> list_singleton (pcdata x))
+          (option_get_map ~default:[] ~f:(list_singleton -| pcdata)
              value')
       else Lwt.return []
 
@@ -133,10 +150,10 @@ module Form_string =
     (struct
       type a = string
       type param_name = [`One of string] Eliom_parameter.param_name
-      type template_data = string option
-      type 'res template_data_fun = ?required_pattern:string -> unit -> 'res
-      let pre_template_data ~value:_ k ?required_pattern () = k required_pattern
-      let apply_template_data_fun (f : _ template_data_fun) = f ()
+      type template_data =[`Required_pattern of string | `From_list of (string * pcdata * bool) list] option
+      type 'res template_data_fun = template_data -> 'res
+      let pre_template_data ~value:_ k arg = k arg
+      let apply_template_data_fun (f : _ template_data_fun) = f None
       let params_type = Eliom_parameter.string
       let default_widget = form_string_default_widget false
      end)
@@ -190,7 +207,6 @@ let int_widget :
   let open Eliom_content.Html5.F in
   fun input select int_to_string ->
     fun ~param_names ?value ?(a=[]) ~template_data:values_opt () ->
-    let required_label = "please select" in
     let hidden, value' = hidden_value value in
     match param_names with
       | `Param_names (_, param_names) -> begin
