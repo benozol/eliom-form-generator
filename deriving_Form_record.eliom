@@ -33,17 +33,19 @@ module Make :
 
     include Make_base (Options)
 
-    let field_renderings submit param_names deep deep_override opt_value =
+    let field_renderings submit param_names deep_config deep_config_override opt_value =
       Lwt_list.map_p
         (fun (field_name,
               (module Field : Field with
                  type enclosing_a = a and
                  type enclosing_raw_param_names = raw_param_names and
                  type enclosing_deep_config = deep_config)) ->
-          let open Local_config in
-          let default_config = { local = zero ; deep = Field.default_deep_config } in
-          let config = option_get ~default:default_config (Field.project_config deep) in
-          let config_override = option_get ~default:default_config (Field.project_config deep_override) in
+          let config, config_override =
+            project_config_override_config field_name
+              Field.project_value opt_value
+              Field.project_config { local = Local_config.zero ; deep = Field.default_deep_config }
+              deep_config deep_config_override
+          in
           lwt content =
             let param_names =
               match param_names with
@@ -55,13 +57,8 @@ module Make :
             in
             Field.pre_render false submit param_names ~config ~config_override
           in
-          let local =
-            let value = option_map ~f:(default_constant_map ~f:Field.project_value) opt_value in
-            Local_config.for_component ?value ~component_name:field_name
-              ~local:config.local ~local_override:config_override.local
-          in
           Lwt.return { Component_rendering.content;
-                       surrounding = Pre_local_config.to_surrounding local.pre })
+                       surrounding = Pre_local_config.to_surrounding Local_config.(config.local.pre) })
         (List.combine Options.component_names Options.fields)
 
     let pre_render is_outmost submit param_names ~config ~config_override =

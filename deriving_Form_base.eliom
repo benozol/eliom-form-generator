@@ -193,11 +193,10 @@ module Local_config = struct
       let value = option_bind ~f:default_constant_put_over_option value in
       update ?value zero in
     let local_from_fieldname =
-      let label = option_map ~f:(fun str -> [pcdata (default_label_of_component_name str)]) component_name in
+      let label = option_map ~f:(list_singleton -| pcdata -| default_label_of_component_name) component_name in
       update ?label zero in
     List.fold_left option_or_by_field zero
-      [ local_override; local_from_value;
-        local; local_from_fieldname ]
+      [ local_override; local; local_from_value; local_from_fieldname ]
 
 end
 
@@ -205,6 +204,20 @@ type ('a, 'param_names, 'template_data, 'deep_config) config' = {
   local : ('a, 'param_names, 'template_data) Local_config.t;
   deep : 'deep_config;
 }
+
+let project_config_override_config field_name project_value opt_value project_config default_config deep_config deep_config_override =
+  let config_override = option_get ~default:default_config (project_config deep_config_override) in
+  let config =
+    let value = option_map ~f:(default_constant_map ~f:project_value) opt_value in
+    let config = option_get ~default:default_config (project_config deep_config) in
+    let local =
+      Local_config.for_component ?value ~component_name:field_name
+        ~local:config.local ~local_override:config_override.local
+    in
+    { config with local }
+  in
+  config, config_override
+
 
 let template_table =
   fun arguments ->

@@ -92,7 +92,7 @@ module Make
       in
       Component_rendering.({ content; surrounding = surrounding_zero })
 
-  let variant_renderings submit (param_names : raw_param_names or_display) deep deep_override opt_value =
+  let variant_renderings submit (param_names : raw_param_names or_display) deep_config deep_config_override opt_value =
     Lwt.map list_filter_some
       (Lwt_list.map_p
          (fun (variant_name,
@@ -108,24 +108,17 @@ module Make
            if param_names = `Display && not is_constructor then
              Lwt.return None
            else
-             let default_config = { local = Local_config.zero ; deep = Variant.default_deep_config } in
-             let config = option_get ~default:default_config (Variant.project_config deep) in
-             let config_override =
-               option_get ~default:default_config
-                 (Variant.project_config deep_override) in
-             let local =
-               let local =
-                 let value = option_map ~f:(default_constant_map ~f:Variant.project_value)
-                   opt_value in
-                 Local_config.for_component ?value ~component_name:variant_name
-                   ~local:config.local ~local_override:config_override.local
-               in
-               let a = [
-                 Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
-                 Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
-               ] @ option_get ~default:[] Local_config.(local.pre.a) in
-               Local_config.update ~a local
+             let config, config_override =
+               project_config_override_config variant_name
+                 Variant.project_value opt_value
+                 Variant.project_config { local = Local_config.zero ; deep = Variant.default_deep_config }
+                 deep_config deep_config_override
              in
+             let a = [
+               Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
+               Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
+             ] @ option_get ~default:[] Local_config.(config.local.pre.a) in
+             let config = { config with local = Local_config.update ~a config.local } in
              lwt content =
                let param_names =
                  match param_names with
@@ -140,7 +133,7 @@ module Make
              in
              Lwt.return
                (Some { Component_rendering.content;
-                       surrounding = Pre_local_config.to_surrounding local.Local_config.pre }))
+                       surrounding = Pre_local_config.to_surrounding Local_config.(config.local.pre) }))
          (List.combine Options.component_names Options.variants))
 
   let default_template args =
