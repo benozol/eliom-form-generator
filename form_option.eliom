@@ -1,5 +1,6 @@
 {shared{
   open Deriving_Form_base
+  open Deriving_Form_utils
 }}
 
 {shared{
@@ -26,8 +27,10 @@
         | None -> ("None", ((Some (Component_None.to_raw_repr ())), None))
         | Some component ->
           ("Some", (None, (Some (Component_Some.to_raw_repr component))))
-      let prefix_None prefix = prefix
-      let prefix_Some prefix = prefix
+      let prefix_None prefix =
+        Deriving_Form_base.prefix_concat ~prefix "None"
+      let prefix_Some prefix =
+        Deriving_Form_base.prefix_concat ~prefix "Some"
       let params' prefix =
         prefix,
         Eliom_parameter.prod
