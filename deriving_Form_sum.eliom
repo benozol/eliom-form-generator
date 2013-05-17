@@ -92,7 +92,8 @@ module Make
       in
       Component_rendering.({ content; surrounding = surrounding_zero })
 
-  let variant_renderings submit (param_names : raw_param_names or_display) deep_config deep_config_override opt_value =
+  let variant_renderings submit (param_names : raw_param_names or_display)
+      deep_config deep_config_override opt_value =
     Lwt.map list_filter_some
       (Lwt_list.map_p
          (fun (variant_name,
@@ -114,11 +115,6 @@ module Make
                  Variant.project_config { local = Local_config.zero ; deep = Variant.default_deep_config }
                  deep_config deep_config_override
              in
-             let a = [
-               Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
-               Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
-             ] @ option_get ~default:[] Local_config.(config.local.pre.a) in
-             let config = { config with local = Local_config.update ~a config.local } in
              lwt content =
                let param_names =
                  match param_names with
@@ -131,6 +127,11 @@ module Make
                Variant.pre_render false submit
                  param_names ~config ~config_override
              in
+             let a = [
+               Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
+               Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
+             ] @ option_get ~default:[] Local_config.(config.local.pre.a) in
+             let config = { config with local = Local_config.update ~a config.local } in
              Lwt.return
                (Some { Component_rendering.content;
                        surrounding = Pre_local_config.to_surrounding Local_config.(config.local.pre) }))
@@ -179,8 +180,7 @@ module Make
                   in Variant.is_constructor default)
                 (List.combine Options.component_names Options.variants)
             in
-            [ Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute
-                variant_name ]
+            [ Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ]
           | None -> []
         in
         let maybe_style_hidden =
