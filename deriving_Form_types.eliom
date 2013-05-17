@@ -222,10 +222,11 @@ let int_widget :
             if values <> [] then
               let a = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
               let a = if hidden then a_hidden `Hidden :: a else a in
+              let nothing_selected = List.for_all (fun (_,_,selected) -> not selected) values in
               let options =
                 List.map
                   (function i, label, selected ->
-                    Option ([], i, Some label, selected))
+                    Option ([], i, Some label, (nothing_selected && option_map ~f:default_constant_get value = Some i) || selected))
                   values
               in
               Lwt.return [
