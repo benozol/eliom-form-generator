@@ -95,7 +95,8 @@ let constant x _ = x
 let flip f x y = f y x
 let (//) = flip
 let (-|) f g = fun x -> f (g x)
-let (@@) f x = f x
+let (@) f x = f x
+let (@@) = List.append
 
 module String_map = struct
   include Map.Make (String)

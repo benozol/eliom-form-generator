@@ -251,8 +251,8 @@ let template_table =
                           td []]])
                in
                let fields =
-                 List.map from_some @@
-                   List.filter is_some @@
+                 List.map from_some @
+                   List.filter is_some @
                      List.map
                        (flip Component_rendering.bind
                           (fun ~content ?(a=[]) ?(label=[]) ?annotation ?value () ->
@@ -276,17 +276,17 @@ let template_table =
                                   [ a_style "display: none" ]
                                 else []
                               in
-                              Some (tr ~a:(a_class ["field"] :: maybe_hidden @ a)
+                              Some (tr ~a:(a_class ["field"] :: maybe_hidden @@ a)
                                       (label :: content :: annotation))))
                    field_renderings
                in
-               let contents = captions @ fields @ annotations @ submits in
+               let contents = captions @@ fields @@ annotations @@ submits in
                let outmost_class = if is_outmost then ["outmost"] else [] in
                match contents with
                | [] -> Lwt.return []
                | hd :: tl ->
                  Lwt.return [
-                   table ~a:(a_class (["form"; form_class] @ outmost_class) :: a)
+                   table ~a:(a_class (["form"; form_class] @@ outmost_class) :: a)
                      hd tl
                  ]))
       arguments

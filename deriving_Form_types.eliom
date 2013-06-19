@@ -112,7 +112,7 @@ let form_string_default_widget can_be_empty : (string, _, _) widget =
     | `Param_names (_, param_names) ->
       let a = if hidden then a_hidden `Hidden :: a else a in
       let input pattern_maybe =
-        let a = local_class_a :: required_maybe @ pattern_maybe @ (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
+        let a = local_class_a :: required_maybe @@ pattern_maybe @@ (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
         Lwt.return [
           string_input ~a ~name:param_names ?value:value' ~input_type:`Text ();
           input_marker;
@@ -136,7 +136,7 @@ let form_string_default_widget can_be_empty : (string, _, _) widget =
               ]
             | [] ->
               Lwt.return [
-                select ~a:(required_maybe @ a) ~name:param_names
+                select ~a:(required_maybe @@ a) ~name:param_names
                   (mk_option ("", (pcdata required_label), false)) []
               ]))
     | `Display ->
@@ -185,7 +185,7 @@ module Form_int =
             ]
           | `Display ->
             if not hidden then
-              Lwt.return @@ option_get_map ~default:[]
+              Lwt.return @ option_get_map ~default:[]
                 ~f:(fun x -> list_singleton (pcdata (string_of_int x)))
                 value
             else Lwt.return []

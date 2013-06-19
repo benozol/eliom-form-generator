@@ -81,7 +81,7 @@ module Make :
             else
               []
           in
-          classes :: maybe_hidden @ option_get ~default:[] local.pre.a
+          classes :: maybe_hidden @@ option_get ~default:[] local.pre.a
         in
         { local.pre with a = Some a } in
       lwt component_renderings = field_renderings submit param_names config.deep config_override.deep local.pre.value in

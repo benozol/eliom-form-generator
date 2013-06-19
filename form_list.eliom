@@ -199,7 +199,7 @@
                   Eliom_content.Html5.F.li
               in
               li ~a:[a_class [form_list_list_item_class]]
-                (li_content @ [ remove_a ]),
+                (li_content @@ [ remove_a ]),
               remove_a
               in
               lwt list =
@@ -257,7 +257,7 @@
                                    form_sum_dropdown_variant_selector_class)));
                         let a_node =
                           match
-                            Dom.list_of_nodeList @@
+                            Dom.list_of_nodeList @
                               fresh_li ## querySelectorAll
                               (ksprintf Js.string ".%s" form_list_remove_button_class)
                           with
@@ -269,7 +269,7 @@
                         form_inputs_set_required (find_form_node a_node);
                         Lwt.return ()));
               }};
-              Lwt.return (set_required_for_outmost ~is_outmost [list] @ [ add_a ])
+              Lwt.return (set_required_for_outmost ~is_outmost [list] @@ [ add_a ])
 
       type ('arg, 'res) opt_component_configs_fun =
           ?elt:Form.config -> 'arg -> 'res

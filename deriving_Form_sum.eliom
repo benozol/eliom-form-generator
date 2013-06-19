@@ -130,7 +130,7 @@ module Make
              let a = [
                Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
                Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
-             ] @ option_get ~default:[] Local_config.(config.local.pre.a) in
+             ] @@ option_get ~default:[] Local_config.(config.local.pre.a) in
              let config = { config with local = Local_config.update ~a config.local } in
              Lwt.return
                (Some { Component_rendering.content;
@@ -188,9 +188,9 @@ module Make
             [ Eliom_content.Html5.F.a_style "display: none" ]
           else []
         in
-        a_form_sum_class :: a_form_sum_variant @ maybe_style_hidden
+        a_form_sum_class :: a_form_sum_variant @@ maybe_style_hidden
       in
-      { local.pre with a = Some (here_a @ option_get ~default:[] local.pre.a) }
+      { local.pre with a = Some (here_a @@ option_get ~default:[] local.pre.a) }
     in
     Lwt.map (set_required_for_outmost ~is_outmost)
       (template
