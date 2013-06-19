@@ -4,11 +4,15 @@ let debug fmt =
     (fun str ->
       Ocsigen_messages.console (fun () -> str))
     fmt
-
+}}
+{client{
+  let debug = Eliom_lib.debug
+}}
+{shared{
 let failwith fmt =
   Printf.ksprintf
     (fun str ->
-      Ocsigen_messages.console (fun () -> str);
+      debug "%s" str;
       failwith str)
     fmt
 }}
