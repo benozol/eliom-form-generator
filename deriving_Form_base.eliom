@@ -347,6 +347,7 @@ module type Base_options = sig
   val params' : string -> string * (raw_repr, [`WithoutSuffix], raw_param_names) Eliom_parameter.params_type
   val opt_component_configs_fun : (deep_config -> 'arg -> 'res) ->
     ('arg, 'res) opt_component_configs_fun
+  val apply_component_configs : ('arg, 'res) opt_component_configs_fun -> 'arg -> 'res
   val default_deep_config : deep_config
   val default_template : (a, raw_param_names, template_data) Template.t
   val component_names : string list

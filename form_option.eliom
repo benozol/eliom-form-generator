@@ -44,6 +44,7 @@
         ?none: Component_None.config ->
         ?some: Component_Some.config -> 'arg -> 'res
       let opt_component_configs_fun k ?none ?some arg = k (none, some) arg
+      let apply_component_configs (f : (_, _) opt_component_configs_fun) x = f x
       let default_template = default_template
       let variants : ((a, raw_param_names, deep_config) Deriving_Form_sum.variant) list =
         let project_None (none, _) = none

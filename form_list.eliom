@@ -274,6 +274,7 @@
       type ('arg, 'res) opt_component_configs_fun =
           ?elt:Form.config -> 'arg -> 'res
       let opt_component_configs_fun k ?elt = k elt
+      let apply_component_configs (f : (_,_) opt_component_configs_fun) x = f x
 
       let content ?submit ?id =
         Local_config.fun_

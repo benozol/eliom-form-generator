@@ -532,6 +532,7 @@ module Builder (Loc : Defs.Loc) = struct
                 $Helpers.Untranslate'.expr opt_component_configs_fun_type$
               let opt_component_configs_fun k =
                 $exp:opt_component_configs_fun$
+              let apply_component_configs (f : (_, _) opt_component_configs_fun) x = f x
               let default_template = default_template
               let $lid:components_list_name$ :
                 (a, raw_param_names, deep_config) $ctyp_of_qname component_type_name$ list =

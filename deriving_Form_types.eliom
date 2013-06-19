@@ -71,6 +71,7 @@ module Make_atomic :
         let component_names = []
         let default_deep_config = ()
         let opt_component_configs_fun k x = k () x
+        let apply_component_configs f x = f x
         type ('arg, 'res) opt_component_configs_fun = 'arg -> 'res
         type deep_config = unit
         type raw_repr = a
