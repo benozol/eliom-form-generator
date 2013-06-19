@@ -30,10 +30,10 @@ $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
 	$(ELIOMC) -infer -package js_of_ocaml $(PA_COPTS) $<
 
 $(ELIOM_SERVER_DIR)/%.cmo: %.eliom
-	$(ELIOMC) -c $(OPTS) $(PA_COPTS) $<
+	$(ELIOMC) -annot -c $(OPTS) $(PA_COPTS) $<
 
 $(ELIOM_CLIENT_DIR)/%.cmo: %.eliom
-	$(JS_OF_ELIOM) -c $(OPTS) $(PA_COPTS) $<
+	$(JS_OF_ELIOM) -annot -c $(OPTS) $(PA_COPTS) $<
 
 %.cmo: %.ml
 	$(OCAMLC) -syntax camlp4o $(PA_COPTS) -c -o $@ $<

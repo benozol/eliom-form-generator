@@ -127,7 +127,7 @@ module Template = struct
   }
 
   type ('a, 'param_names, 'template_data) t =
-    ('a, 'param_names, 'template_data) arguments -> form_content Lwt.t
+    ('a, 'param_names, 'template_data) arguments -> form_content
 
   let arguments ~is_outmost ?submit ?(config=Pre_local_config.zero) ~template_data
       ~param_names ~component_renderings () =
@@ -220,7 +220,6 @@ let project_config_override_config field_name project_value opt_value project_co
   in
   config, config_override
 
-
 let template_table =
   fun arguments ->
     Template.template
@@ -283,12 +282,11 @@ let template_table =
                let contents = captions @@ fields @@ annotations @@ submits in
                let outmost_class = if is_outmost then ["outmost"] else [] in
                match contents with
-               | [] -> Lwt.return []
-               | hd :: tl ->
-                 Lwt.return [
-                   table ~a:(a_class (["form"; form_class] @@ outmost_class) :: a)
-                     hd tl
-                 ]))
+               | [] -> []
+               | hd :: tl -> [
+                 table ~a:(a_class (["form"; form_class] @@ outmost_class) :: a)
+                   hd tl
+               ]))
       arguments
 
 let default_template =
@@ -319,7 +317,8 @@ module type Template_data = sig
   type a
   type template_data
   type 'res template_data_fun
-  val pre_template_data : value:a option -> (template_data -> 'res Lwt.t) -> 'res Lwt.t template_data_fun
+  val template_data : value:a option -> template_data template_data_fun
+  val template_data_lwt : value:a option -> template_data Lwt.t template_data_fun
   val apply_template_data_fun : 'res template_data_fun -> 'res
 end
 
@@ -333,7 +332,8 @@ module Template_data_unit :
     type a = T.t
     type template_data = unit
     type 'res template_data_fun = 'res
-    let pre_template_data ~value:_ k = k ()
+    let template_data ~value:_ = ()
+    let template_data_lwt ~value:_ = Lwt.return ()
     let apply_template_data_fun (f : _ template_data_fun) = f
   end
 
@@ -353,11 +353,38 @@ module type Base_options = sig
   val component_names : string list
 end
 
+module type Monad_with_template_data = sig
+  include Monad
+  module Template_data :
+    functor (Template_data : Template_data) -> sig
+      val template_data : value:Template_data.a option -> Template_data.template_data t
+    end
+end
+
+module Lwt_with_template_data = struct
+  include Lwt'
+  module Template_data (Template_data : Template_data) = struct
+    let template_data ~value =
+      Template_data.apply_template_data_fun @
+        Template_data.template_data_lwt ~value
+  end
+end
+module Identity_with_template_data = struct
+  include Identity
+  module Template_data (Template_data : Template_data) = struct
+    let template_data ~value =
+      Template_data.apply_template_data_fun @
+        Template_data.template_data ~value
+  end
+end
+
 module type Pre_form = sig
   include Base_options
   type config = (a, raw_param_names, template_data, deep_config) config'
-  val pre_render : bool -> button_content option -> raw_param_names or_display ->
-    config:config -> config_override:config -> form_content Lwt.t
+  module Pre : functor (Monad : Monad_with_template_data) -> sig
+    val pre_render : bool -> button_content option -> raw_param_names or_display ->
+      config:config -> config_override:config -> form_content Monad.t
+  end
 end
 
 module type Form = sig
@@ -369,25 +396,26 @@ module type Form = sig
   val fresh_id : unit -> id
   val set_config_once : ?id:id -> config -> unit
   val params : string -> (repr, [`WithoutSuffix], param_names) Eliom_parameter.params_type
-  val template_data : value:a option -> template_data Lwt.t template_data_fun
+  (* val template_data : value:a option -> template_data template_data_fun *)
+  (* val template_data_lwt : value:a option -> template_data Lwt.t template_data_fun *)
   val content :
     ?submit:button_content -> ?id:id ->
     ( a, raw_param_names, template_data,
-      unit,
-      (unit,
-       param_names -> form_content Lwt.t) opt_component_configs_fun
+      unit, (unit, param_names -> form_content Lwt.t) opt_component_configs_fun
     ) Local_config.fun_
   val display :
     value:a ->
-    ( a, raw_param_names, template_data,
-      unit,
-      (unit,
-       form_content Lwt.t) opt_component_configs_fun ) Local_config.fun_
+    ( a, raw_param_names, template_data, unit,
+      (unit, form_content) opt_component_configs_fun
+    ) Local_config.fun_
+  val display_lwt :
+    value:a ->
+    ( a, raw_param_names, template_data, unit,
+      (unit, form_content Lwt.t) opt_component_configs_fun
+    ) Local_config.fun_
   val config :
     ( a, raw_param_names, template_data,
-      unit,
-      (unit,
-       config) opt_component_configs_fun ) Local_config.fun_
+      unit, (unit, config) opt_component_configs_fun ) Local_config.fun_
   val get_handler : (?id:id -> a -> 'post -> 'res) -> (repr -> 'post -> 'res)
   val post_handler : (?id:id -> 'get -> a -> 'res) -> ('get -> repr -> 'res)
 end
@@ -440,7 +468,7 @@ module Make_base (Options : Base_options) = struct
     Eliom_parameter.prod
       (snd (params' (prefix^param_name_root)))
       id_param_name
-  let template_data ~value = pre_template_data ~value Lwt.return
+  (* let template_data ~value = pre_template_data ~value Lwt.return *)
   type config = (a, raw_param_names, template_data, deep_config) config'
   include Make_id (struct type t = config end)
   let repr a = to_raw_repr a, None

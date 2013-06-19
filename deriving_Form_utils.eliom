@@ -98,6 +98,31 @@ let (-|) f g = fun x -> f (g x)
 let (@) f x = f x
 let (@@) = List.append
 
+module type Monad = sig
+  type 'a t
+  val bind : 'a t -> ('a -> 'b t) -> 'b t
+  val return : 'a -> 'a t
+  val map : ('a -> 'b) -> 'a t -> 'b t
+  module List : sig
+    val map : ('a -> 'b t) -> 'a list -> 'b list t
+  end
+end
+
+module Identity = struct
+  type 'a t = 'a
+  let bind x f = f x
+  let return x = x
+  let map f x = f x
+  module List = List
+end
+
+module Lwt' = struct
+  include Lwt
+  module List = struct
+    let map = Lwt_list.map_p
+  end
+end
+
 module String_map = struct
   include Map.Make (String)
   let get ~default key map =

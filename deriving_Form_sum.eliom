@@ -92,22 +92,25 @@ module Make
       in
       Component_rendering.({ content; surrounding = surrounding_zero })
 
+  module Pre (Monad : Monad_with_template_data) = struct
+
   let variant_renderings submit (param_names : raw_param_names or_display)
       deep_config deep_config_override opt_value =
-    Lwt.map list_filter_some
-      (Lwt_list.map_p
+    Monad.map list_filter_some
+      (Monad.List.map
          (fun (variant_name,
                (module Variant : Variant with
                   type enclosing_a = a and
                   type enclosing_raw_param_names = raw_param_names and
                   type enclosing_deep_config = deep_config)) ->
+           let module Variant_pre = Variant.Pre (Monad) in
            let is_constructor =
              option_get_map ~default:false
                ~f:(fun dc -> Variant.is_constructor (default_constant_get dc))
                opt_value
            in
            if param_names = `Display && not is_constructor then
-             Lwt.return None
+             Monad.return None
            else
              let config, config_override =
                project_config_override_config variant_name
@@ -115,26 +118,26 @@ module Make
                  Variant.project_config { local = Local_config.zero ; deep = Variant.default_deep_config }
                  deep_config deep_config_override
              in
-             lwt content =
-               let param_names =
-                 match param_names with
-                   | `Display -> `Display
-                   | `Param_names (prefix, param_names) ->
-                     `Param_names
-                       (Variant.prefix prefix,
-                        Variant.project_param_names param_names)
-               in
-               Variant.pre_render false submit
-                 param_names ~config ~config_override
-             in
-             let a = [
-               Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
-               Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
-             ] @@ option_get ~default:[] Local_config.(config.local.pre.a) in
-             let config = { config with local = Local_config.update ~a config.local } in
-             Lwt.return
-               (Some { Component_rendering.content;
-                       surrounding = Pre_local_config.to_surrounding Local_config.(config.local.pre) }))
+             Monad.bind
+               (let param_names =
+                  match param_names with
+                    | `Display -> `Display
+                    | `Param_names (prefix, param_names) ->
+                      `Param_names
+                        (Variant.prefix prefix,
+                         Variant.project_param_names param_names)
+                in
+                Variant_pre.pre_render false submit
+                  param_names ~config ~config_override)
+             @ fun content ->
+               let a = [
+                 Eliom_content.Html5.F.a_class [ form_sum_variant_class ] ;
+                 Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ;
+               ] @@ option_get ~default:[] Local_config.(config.local.pre.a) in
+               let config = { config with local = Local_config.update ~a config.local } in
+               Monad.return
+                 (Some { Component_rendering.content;
+                         surrounding = Pre_local_config.to_surrounding Local_config.(config.local.pre) }))
          (List.combine Options.component_names Options.variants))
 
   let default_template args =
@@ -152,53 +155,62 @@ module Make
     let open Local_config in
     let local = option_or_by_field config_override.local config.local in
     let template = option_get ~default:default_template local.template in
-    lwt template_data =
-      let default () =
-        let value = option_map ~f:default_constant_get local.pre.value in
-        apply_template_data_fun (pre_template_data ~value Lwt.return)
-      in
-      option_get_lwt ~default local.template_data
-    in
-    lwt component_renderings =
-      Lwt.map
-        (cons (variant_selector param_names local.pre.value))
-        (variant_renderings submit param_names config.deep config_override.deep local.pre.value)
-    in
-    let pre =
-      let here_a =
-        let hidden, value' = hidden_value local.pre.value in
-        let a_form_sum_class = Eliom_content.Html5.F.a_class [ form_sum_class ] in
-        let a_form_sum_variant =
-          match value' with
-          | Some default ->
-            let variant_name, _ =
-              List.find
-                (fun (_, variant) ->
-                  let module Variant =
-                        (val (variant : (Options.a, Options.raw_param_names,
-                                         Options.deep_config) variant))
-                  in Variant.is_constructor default)
-                (List.combine Options.component_names Options.variants)
-            in
-            [ Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ]
-          | None -> []
-        in
-        let maybe_style_hidden =
-          if hidden then
-            [ Eliom_content.Html5.F.a_style "display: none" ]
-          else []
-        in
-        a_form_sum_class :: a_form_sum_variant @@ maybe_style_hidden
-      in
-      { local.pre with a = Some (here_a @@ option_get ~default:[] local.pre.a) }
-    in
-    Lwt.map (set_required_for_outmost ~is_outmost)
-      (template
-         (Template.arguments ~is_outmost ?submit ~config:pre
-            ~param_names ~template_data ~component_renderings ()))
+    Monad.bind
+      (let default () =
+         let value = option_map ~f:default_constant_get local.pre.value in
+         let module Template_data = Monad.Template_data (Options) in
+         Template_data.template_data ~value
+       in
+       option_get' ~default @
+         option_map ~f:Monad.return local.template_data)
+    @ fun template_data ->
+      Monad.bind
+        (Monad.map
+           (cons (variant_selector param_names local.pre.value))
+           (variant_renderings submit param_names config.deep config_override.deep local.pre.value))
+         @ fun component_renderings ->
+           let pre =
+             let here_a =
+               let hidden, value' = hidden_value local.pre.value in
+               let a_form_sum_class = Eliom_content.Html5.F.a_class [ form_sum_class ] in
+               let a_form_sum_variant =
+                 match value' with
+                   | Some default ->
+                     let variant_name, _ =
+                       List.find
+                         (fun (_, variant) ->
+                           let module Variant =
+                                 (val (variant : (Options.a, Options.raw_param_names,
+                                                  Options.deep_config) variant))
+                           in Variant.is_constructor default)
+                         (List.combine Options.component_names Options.variants)
+                     in
+                     [ Eliom_content.Html5.Custom_data.attrib form_sum_variant_attribute variant_name ]
+                   | None -> []
+               in
+               let maybe_style_hidden =
+                 if hidden then
+                   [ Eliom_content.Html5.F.a_style "display: none" ]
+                 else []
+               in
+               a_form_sum_class :: a_form_sum_variant @@ maybe_style_hidden
+             in
+             { local.pre with a = Some (here_a @@ option_get ~default:[] local.pre.a) }
+           in
+           Monad.return @ set_required_for_outmost ~is_outmost @ template @
+             Template.arguments ~is_outmost ?submit ~config:pre
+               ~param_names ~template_data ~component_renderings ()
+  end
 
-  let content = pre_content pre_render
-  let display = pre_display pre_render
+  let content =
+    let module Pre = Pre (Lwt_with_template_data) in
+    pre_content Pre.pre_render
+  let display =
+    let module Pre = Pre (Identity_with_template_data) in
+    pre_display Pre.pre_render
+  let display_lwt =
+    let module Pre = Pre (Lwt_with_template_data) in
+    pre_display Pre.pre_render
 
 end
 }}

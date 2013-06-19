@@ -11,7 +11,7 @@ type ('a, 'param_names, 'template_data) widget =
   ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list ->
   template_data:'template_data ->
   unit ->
-  form_content Lwt.t
+  form_content
 
 let atomic_template : (_, _, _) Template.t -> (_, _, _) widget -> (_, _, _) Template.t =
   fun template widget ->
@@ -19,7 +19,7 @@ let atomic_template : (_, _, _) Template.t -> (_, _, _) widget -> (_, _, _) Temp
       (fun ~is_outmost ?submit ~config ~template_data ~param_names ~component_renderings () ->
         assert (component_renderings = []);
         let { Local_config.value; a; _ } = config in
-        lwt content = widget ~param_names ?value ?a ?template_data () in
+        let content = widget ~param_names ?value ?a ?template_data () in
         if is_outmost then
           let component_renderings = [ {
             Component_rendering.content;
@@ -30,7 +30,7 @@ let atomic_template : (_, _, _) Template.t -> (_, _, _) widget -> (_, _, _) Temp
                ~is_outmost ?submit ~config ~template_data
                ~param_names ~component_renderings ())
         else
-          Lwt.return content)
+          content)
 
 
 module type Atomic_options = sig
@@ -79,22 +79,33 @@ module Make_atomic :
         let to_raw_repr x = x
         let default_template = atomic_template default_template default_widget
        end)
+    module Pre (Monad : Monad_with_template_data) = struct
     let pre_render is_outmost submit param_names ~config ~config_override =
       let open Local_config in
       let local = option_or_by_field config_override.local config.local in
       let template = option_get ~default:default_template local.template in
-      lwt template_data =
-        let default () =
-          let value = option_map ~f:default_constant_get local.pre.value in
-          apply_template_data_fun (pre_template_data ~value Lwt.return)
-        in
-        option_get_lwt ~default local.template_data
-      in
-      template
-        (Template.arguments ~is_outmost ?submit ~config:local.pre
-           ~template_data ~param_names ~component_renderings:[] ())
-    let display = pre_display pre_render
-    let content = pre_content pre_render
+      Monad.bind
+        (let default () =
+           let value = option_map ~f:default_constant_get local.pre.value in
+           let module Template_data = Monad.Template_data (Atomic_options) in
+           Template_data.template_data ~value
+         in
+         option_get' ~default @
+           option_map ~f:Monad.return local.template_data)
+      @ fun template_data ->
+        Monad.return @ template @
+          Template.arguments ~is_outmost ?submit ~config:local.pre
+            ~template_data ~param_names ~component_renderings:[] ()
+    end
+    let content =
+      let module Pre = Pre (Lwt_with_template_data) in
+      pre_content Pre.pre_render
+    let display =
+      let module Pre = Pre (Identity_with_template_data) in
+      pre_display Pre.pre_render
+    let display_lwt =
+      let module Pre = Pre (Lwt_with_template_data) in
+      pre_display Pre.pre_render
   end
 
 let form_string_default_widget can_be_empty : (string, _, _) widget =
@@ -113,7 +124,7 @@ let form_string_default_widget can_be_empty : (string, _, _) widget =
       let a = if hidden then a_hidden `Hidden :: a else a in
       let input pattern_maybe =
         let a = local_class_a :: required_maybe @@ pattern_maybe @@ (a :> Html5_types.input_attrib Eliom_content.Html5.attrib list) in
-        Lwt.return [
+        [
           string_input ~a ~name:param_names ?value:value' ~input_type:`Text ();
           input_marker;
         ]
@@ -129,32 +140,32 @@ let form_string_default_widget can_be_empty : (string, _, _) widget =
           in
           (match options with
             | option :: options ->
-              Lwt.return [
+               [
                 string_select ~a ~name:param_names ~required:(pcdata required_label)
                   (mk_option option) (List.map mk_option options);
                 input_marker;
               ]
             | [] ->
-              Lwt.return [
+               [
                 select ~a:(required_maybe @@ a) ~name:param_names
                   (mk_option ("", (pcdata required_label), false)) []
               ]))
     | `Display ->
       if not hidden then
-        Lwt.return
-          (option_get_map ~default:[] ~f:(list_singleton -| pcdata)
-             value')
-      else Lwt.return []
+        option_get_map ~default:[] ~f:(list_singleton -| pcdata)
+          value'
+      else []
 
 module Form_string =
   Make_atomic
     (struct
       type a = string
       type param_name = [`One of string] Eliom_parameter.param_name
-      type template_data =[`Required_pattern of string | `From_list of (string * pcdata * bool) list] option
+      type template_data = [`Required_pattern of string | `From_list of (string * pcdata * bool) list] option
       type 'res template_data_fun = template_data -> 'res
-      let pre_template_data ~value:_ k arg = k arg
-      let apply_template_data_fun (f : _ template_data_fun) = f None
+      let template_data ~value:_ = identity
+      let template_data_lwt ~value:_ = Lwt.return
+      let apply_template_data_fun f = f None
       let params_type = Eliom_parameter.string
       let default_widget = form_string_default_widget false
      end)
@@ -167,8 +178,9 @@ module Form_int =
       let params_type = Eliom_parameter.int
       type template_data = unit
       type 'res template_data_fun = 'res
-      let pre_template_data ~value:_ k = k ()
-      let apply_template_data_fun (f : _ template_data_fun) = f
+      let template_data ~value:_ = ()
+      let template_data_lwt ~value:_ = Lwt.return ()
+      let apply_template_data_fun x = x
       let default_widget : (_,_,_) widget =
         let open Eliom_content.Html5.F in
         fun ~param_names ?value ?(a=[]) ~template_data:() () ->
@@ -179,16 +191,16 @@ module Form_int =
             let a =
               a_required `Required ::
                 if hidden then a_hidden `Hidden :: a else a
-            in Lwt.return [
+            in [
               int_input ~a ~name:param_names ?value ~input_type:`Number ();
               input_marker;
             ]
           | `Display ->
             if not hidden then
-              Lwt.return @ option_get_map ~default:[]
+              option_get_map ~default:[]
                 ~f:(fun x -> list_singleton (pcdata (string_of_int x)))
                 value
-            else Lwt.return []
+            else []
       let default_template = atomic_template default_template default_widget
      end)
 
@@ -215,7 +227,7 @@ let int_widget :
           | None ->
             let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
             let a = a_required `Required :: if hidden then a_hidden `Hidden :: a else a in
-            Lwt.return [
+             [
               input ~a ~name:param_names ?value:value' ~input_type:`Number ();
               input_marker;
             ]
@@ -230,7 +242,7 @@ let int_widget :
                     Option ([], i, Some label, (nothing_selected && option_map ~f:default_constant_get value = Some i) || selected))
                   values
               in
-              Lwt.return [
+               [
                 select ~a ~required:(pcdata required_label)
                   ~name:param_names (List.hd options) (List.tl options);
                 input_marker;
@@ -238,13 +250,13 @@ let int_widget :
             else
               let a' = (a :> Html5_types.select_attrib Eliom_content.Html5.F.attrib list) in
               let open Eliom_content.Html5.F.Raw in
-              Lwt.return [
+               [
                 select ~a:(a_required `Required :: a')
                   [option ~a:[a_value ""] (pcdata required_label)]
               ]
       end
       | `Display ->
-        Lwt.return [
+         [
           pcdata (option_get ~default:"" (option_map ~f:int_to_string value'))
         ]
 
@@ -256,7 +268,8 @@ module Form_int64 =
       let params_type = Eliom_parameter.int64
       type template_data = (int64 * pcdata * bool) list option
       type 'res template_data_fun = ?from_list:(int64 * pcdata * bool) list -> unit -> 'res
-      let pre_template_data ~value:_ k ?from_list () = k from_list
+      let template_data ~value:_ ?from_list () = from_list
+      let template_data_lwt ~value:_ ?from_list () = Lwt.return from_list
       let apply_template_data_fun (f : _ template_data_fun) = f ()
       let default_widget =
         let open Eliom_content.Html5.F in
@@ -271,7 +284,8 @@ module Form_int32 =
       let params_type = Eliom_parameter.int32
       type template_data = (int32 * pcdata * bool) list option
       type 'res template_data_fun = ?from_list:(int32 * pcdata * bool) list -> unit -> 'res
-      let pre_template_data ~value:_ k ?from_list () = k from_list
+      let template_data ~value:_ ?from_list () = from_list
+      let template_data_lwt ~value:_ ?from_list () = Lwt.return from_list
       let apply_template_data_fun (f : _ template_data_fun) = f ()
       let default_widget =
         let open Eliom_content.Html5.F in
@@ -287,7 +301,7 @@ module Form_unit =
       let params_type _ = Eliom_parameter.unit
       let default_widget =
         fun ~param_names:_ ?value:_ ?a:_ ~template_data:() () ->
-          Lwt.return []
+          []
      end)
 
 (******************************************************************************)

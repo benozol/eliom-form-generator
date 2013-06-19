@@ -133,7 +133,6 @@
       type config = (a, raw_param_names, template_data, deep_config) config'
       include Make_id (struct type t = config end)
       let default_deep_config = None
-      let template_data ~value:_ = Lwt.return ()
       let prefix_elt prefix = prefix_concat ~prefix list_suffix
       let params' prefix =
         prefix,
@@ -154,7 +153,14 @@
         local = Local_config.zero;
         deep = Form.default_deep_config }
 
+      type ('arg, 'res) opt_component_configs_fun =
+          ?elt:Form.config -> 'arg -> 'res
+      let opt_component_configs_fun k ?elt = k elt
+      let apply_component_configs (f : (_,_) opt_component_configs_fun) x = f x
+
+      module Pre (Monad : Monad_with_template_data) = struct
       let pre_render =
+        let module Form_pre = Form.Pre (Monad) in
         let sub_config config sub_default_opt =
           let config =
             option_get ~default:form_config_zero config.deep
@@ -176,14 +182,14 @@
                 | Some (`Default default) ->
                   let open Eliom_content.Html5.F in
                       let for_sub_default sub_default =
-                        Lwt.map li
-                          (Form.pre_render false submit `Display
-                             ~config:(sub_config config (Some sub_default))
-                             ~config_override:(sub_config config_override None))
+                        Monad.map li @
+                          Form_pre.pre_render false submit `Display
+                            ~config:(sub_config config (Some sub_default))
+                            ~config_override:(sub_config config_override None)
                       in
-                      Lwt.map (list_singleton -| ul)
-                        (Lwt_list.map_p for_sub_default default)
-                | _ -> Lwt.return []
+                      Monad.map (list_singleton -| ul) @
+                        Monad.List.map for_sub_default default
+                | _ -> Monad.return []
               end
             | `Param_names (prefix, param_names) ->
               let open Eliom_content.Html5.F in
@@ -202,39 +208,39 @@
                 (li_content @@ [ remove_a ]),
               remove_a
               in
-              lwt list =
-                let _, value = hidden_value Local_config.(local.pre.value) in
-                Lwt.map
-                  (Eliom_content.Html5.D.ul ~a:[a_class [form_list_list_class]])
-                  (param_names.Eliom_parameter.it
-                     (fun param_names sub_default sofar ->
-                       lwt sofar = sofar in
-                       lwt li, remove_a =
-                         Lwt.map (list_item ~dom_semantics:true)
-                           (Form.pre_render false submit
-                              (`Param_names (prefix, param_names))
-                              ~config:(sub_config config (Some sub_default))
-                              ~config_override:(sub_config config_override None))
-                       in
-                       ignore {unit{ connect_remove %prefix (to_dom %remove_a) }};
-                       Lwt.return (li :: sofar))
-                     (option_get ~default:[] value)
-                     (Lwt.return []))
-              in
+              Monad.bind
+                (let _, value = hidden_value Local_config.(local.pre.value) in
+                 Monad.map
+                   (Eliom_content.Html5.D.ul ~a:[a_class [form_list_list_class]])
+                   (param_names.Eliom_parameter.it
+                      (fun param_names sub_default sofar ->
+                        Monad.bind sofar @ fun sofar ->
+                        Monad.bind (
+                          Monad.map (list_item ~dom_semantics:true)
+                            (Form_pre.pre_render false submit
+                               (`Param_names (prefix, param_names))
+                               ~config:(sub_config config (Some sub_default))
+                               ~config_override:(sub_config config_override None))
+                        ) @ fun (li, remove_a) ->
+                        ignore {unit{ connect_remove %prefix (to_dom %remove_a) }};
+                        Monad.return (li :: sofar))
+                      (option_get ~default:[] value)
+                      (Monad.return [])))
+              @ fun list ->
               let add_a = Eliom_content.Html5.D.Raw.a [pcdata "Add"] in
-              lwt li_template =
-                Lwt.map fst
+              Monad.bind (
+                Monad.map fst
                   (param_names.Eliom_parameter.it
                      (fun param_names _ _ ->
-                       Lwt.map
+                       Monad.map
                          (list_item ~dom_semantics:true)
-                         (Form.pre_render false submit
+                         (Form_pre.pre_render false submit
                             (`Param_names (prefix, param_names))
                             ~config:(sub_config config None)
                             ~config_override:(sub_config config_override None)))
                      [Obj.magic ()]
                      (Obj.magic ()))
-              in
+              ) @ fun li_template ->
               ignore {unit{
                 Lwt_js_events.async
                   (fun () ->
@@ -269,27 +275,9 @@
                         form_inputs_set_required (find_form_node a_node);
                         Lwt.return ()));
               }};
-              Lwt.return (set_required_for_outmost ~is_outmost [list] @@ [ add_a ])
+              Monad.return (set_required_for_outmost ~is_outmost [list] @@ [ add_a ])
 
-      type ('arg, 'res) opt_component_configs_fun =
-          ?elt:Form.config -> 'arg -> 'res
-      let opt_component_configs_fun k ?elt = k elt
-      let apply_component_configs (f : (_,_) opt_component_configs_fun) x = f x
-
-      let content ?submit ?id =
-        Local_config.fun_
-          (fun local () ->
-            opt_component_configs_fun
-              (fun deep () ->
-                fun (param_names, id_param_name) ->
-                  let param_names = `Param_names ("", param_names) in
-                  let config = { local ; deep } in
-                  let config_override = option_get ~default:config_zero (get_config_once id) in
-                  Lwt.map
-                    (List.append (id_input ?id ~name:id_param_name))
-                    (pre_render true submit param_names ~config ~config_override)))
-
-      let display ~value =
+      let pre_display ~value =
         Local_config.fun_
           (fun local () ->
             let local = Local_config.update ?value:(Some (`Default value)) local in
@@ -299,6 +287,30 @@
                   `Display
                   ~config:{ local ; deep }
                   ~config_override:config_zero))
+      end
+
+      let content ?submit ?id =
+        let module Pre = Pre (Lwt_with_template_data) in
+        Local_config.fun_
+          (fun local () ->
+            opt_component_configs_fun
+              (fun deep () ->
+                fun (param_names, id_param_name) ->
+                  let param_names = `Param_names ("", param_names) in
+                  let config = { local ; deep } in
+                  let config_override = option_get ~default:config_zero (get_config_once id) in
+                  Lwt'.map
+                    (List.append (id_input ?id ~name:id_param_name))
+                    (Pre.pre_render true submit param_names ~config ~config_override)))
+
+      let display =
+        let module Pre = Pre (Identity_with_template_data) in
+        Pre.pre_display
+
+      let display_lwt =
+        let module Pre = Pre (Lwt_with_template_data) in
+        Pre.pre_display
+
       let config =
         Local_config.fun_
           (fun local () ->
