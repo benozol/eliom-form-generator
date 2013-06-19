@@ -21,7 +21,11 @@
         | ("None", (Some _, _)) -> None
         | ("Some", (_, Some component)) ->
             Some (Component_Some.of_raw_repr component)
-        | _ -> failwith "Form_option: of_raw_repr"
+        | (ctor, (v1, v2)) ->
+          Deriving_Form_utils.failwith "Form_option: of_raw_repr %s, (%s, %s)"
+            ctor
+            (match v1 with None -> "None" | Some _ -> "Some _")
+            (match v2 with None -> "None" | Some _ -> "Some _")
       let to_raw_repr =
         function
         | None -> ("None", ((Some (Component_None.to_raw_repr ())), None))
