@@ -401,6 +401,11 @@ module type Form = sig
   val content :
     ?submit:button_content -> ?id:id ->
     ( a, raw_param_names, template_data,
+      unit, (unit, param_names -> form_content) opt_component_configs_fun
+    ) Local_config.fun_
+  val content_lwt :
+    ?submit:button_content -> ?id:id ->
+    ( a, raw_param_names, template_data,
       unit, (unit, param_names -> form_content Lwt.t) opt_component_configs_fun
     ) Local_config.fun_
   val display :
@@ -486,7 +491,7 @@ module Make_base (Options : Base_options) = struct
     deep = Options.default_deep_config ;
   }
 
-  let pre_content pre_render ?submit ?id =
+  let pre_content map pre_render ?submit ?id =
     Local_config.fun_
       (fun local () ->
         Options.opt_component_configs_fun
@@ -495,7 +500,7 @@ module Make_base (Options : Base_options) = struct
               let param_names = `Param_names ("", param_names) in
               let config = { local ; deep } in
               let config_override = option_get ~default:config_zero (get_config_once id) in
-              Lwt.map
+              map
                 (List.append (id_input ?id ~name:id_param_name))
                 (pre_render true submit param_names ~config ~config_override)))
 

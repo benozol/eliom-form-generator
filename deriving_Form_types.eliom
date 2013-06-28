@@ -98,8 +98,11 @@ module Make_atomic :
             ~template_data ~param_names ~component_renderings:[] ()
     end
     let content =
+      let module Pre = Pre (Identity_with_template_data) in
+      pre_content Identity.map Pre.pre_render
+    let content_lwt =
       let module Pre = Pre (Lwt_with_template_data) in
-      pre_content Pre.pre_render
+      pre_content Lwt.map Pre.pre_render
     let display =
       let module Pre = Pre (Identity_with_template_data) in
       pre_display Pre.pre_render

@@ -287,10 +287,8 @@
                   `Display
                   ~config:{ local ; deep }
                   ~config_override:config_zero))
-      end
 
-      let content ?submit ?id =
-        let module Pre = Pre (Lwt_with_template_data) in
+      let pre_content ?submit ?id =
         Local_config.fun_
           (fun local () ->
             opt_component_configs_fun
@@ -299,9 +297,11 @@
                   let param_names = `Param_names ("", param_names) in
                   let config = { local ; deep } in
                   let config_override = option_get ~default:config_zero (get_config_once id) in
-                  Lwt'.map
+                  Monad.map
                     (List.append (id_input ?id ~name:id_param_name))
-                    (Pre.pre_render true submit param_names ~config ~config_override)))
+                    (pre_render true submit param_names ~config ~config_override)))
+      end
+
 
       let display =
         let module Pre = Pre (Identity_with_template_data) in
@@ -310,6 +310,14 @@
       let display_lwt =
         let module Pre = Pre (Lwt_with_template_data) in
         Pre.pre_display
+
+      let content =
+        let module Pre = Pre (Identity_with_template_data) in
+        Pre.pre_content
+
+      let content_lwt =
+        let module Pre = Pre (Lwt_with_template_data) in
+        Pre.pre_content
 
       let config =
         Local_config.fun_
