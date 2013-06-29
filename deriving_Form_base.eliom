@@ -4,7 +4,7 @@
         - having all fields of type a as (string, a) either
         - with string is the encrypted json representation of the constant value
    * !!! Put set_config_once in an eref of scope client-process !!!
-   * Lwt-free display
+   * BUGFIX : Hidden option constants are required
 *)
 
 
