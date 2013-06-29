@@ -253,7 +253,7 @@ module Builder (Loc : Defs.Loc) = struct
             (fun component_name sofar ->
               <:expr< fun ? $lid:String.uncapitalize component_name$ -> $sofar$ >>)
             component_names
-            (<:expr< fun arg -> k $component_tuple_expr$ arg >>)
+            (<:expr< fun __arg -> k $component_tuple_expr$ __arg >>)
         in
         let prefix_lid = Printf.sprintf "prefix_%s" in
         let prefix_decls =
