@@ -419,10 +419,141 @@ module type Form = sig
       (unit, form_content Lwt.t) opt_component_configs_fun
     ) Local_config.fun_
   val config :
-    ( a, raw_param_names, template_data,
-      unit, (unit, config) opt_component_configs_fun ) Local_config.fun_
+    ( a, raw_param_names, template_data, unit,
+      (unit, config) opt_component_configs_fun
+    ) Local_config.fun_
   val get_handler : (?id:id -> a -> 'post -> 'res) -> (repr -> 'post -> 'res)
   val post_handler : (?id:id -> 'get -> a -> 'res) -> ('get -> repr -> 'res)
+end
+
+module type Conversion = sig
+  type t
+  type internal
+  val of_internal : internal -> t
+  val to_internal : t -> internal
+end
+
+module Isomorphic
+  (Form : Form)
+  (Conversion : Conversion with type internal = Form.a) :
+  Form
+    with
+      type a = Conversion.t and
+      type raw_param_names = Form.raw_param_names and
+      type template_data = Form.template_data and
+      type 'res template_data_fun = 'res Form.template_data_fun and
+      type deep_config = Form.deep_config and
+      type config = (Conversion.t, Form.raw_param_names, Form.template_data, Form.deep_config) config'
+= struct
+    type a = Conversion.t
+    type raw_param_names = Form.raw_param_names
+    type deep_config = Form.deep_config
+    type raw_repr = Form.raw_repr
+    let of_raw_repr = Conversion.of_internal -| Form.of_raw_repr
+    let to_raw_repr = Form.to_raw_repr -| Conversion.to_internal
+    type template_data = Form.template_data
+    type 'res template_data_fun = 'res Form.template_data_fun
+    let template_data ~value = Form.template_data ~value:(option_map ~f:Conversion.to_internal value)
+    let template_data_lwt ~value = Form.template_data_lwt ~value:(option_map ~f:Conversion.to_internal value)
+    let apply_template_data_fun = Form.apply_template_data_fun
+    let params' = Form.params'
+    let opt_component_configs_fun = Form.opt_component_configs_fun
+    let apply_template_data_fun = Form.apply_template_data_fun
+    let default_deep_config = Form.default_deep_config
+    let template_of_internal : (_,_,_) Template.t -> (_,_,_) Template.t =
+      fun template ->
+        fun arguments ->
+          let value =
+            option_map ~f:(default_constant_map ~f:Conversion.to_internal)
+              arguments.Template.config.Pre_local_config.value
+          in
+          template
+            { arguments with
+              Template.config =
+                { arguments.Template.config with Pre_local_config.value } }
+    let template_to_internal : (_,_,_) Template.t -> (_,_,_) Template.t =
+      fun template ->
+        fun arguments ->
+          let value =
+            option_map ~f:(default_constant_map ~f:Conversion.of_internal)
+              arguments.Template.config.Pre_local_config.value
+          in
+          template
+            { arguments with
+              Template.config =
+                { arguments.Template.config with Pre_local_config.value } }
+    let default_template = template_of_internal Form.default_template
+    let component_names = Form.component_names
+    let apply_component_configs = Form.apply_component_configs
+    type ('arg, 'res) opt_component_configs_fun = ('arg, 'res) Form.opt_component_configs_fun
+    let opt_component_configs_fun = Form.opt_component_configs_fun
+    type config = (a, raw_param_names, template_data, deep_config) config'
+    let local_config_to_internal local_config =
+      let open Local_config in
+      let value =
+        option_map ~f:(default_constant_map ~f:Conversion.to_internal)
+          local_config.pre.value
+      in
+      { local_config with
+        pre = { local_config.pre with value } ;
+        template = option_map ~f:template_to_internal local_config.template }
+    let local_config_of_internal local_config =
+      let open Local_config in
+      let value =
+        option_map ~f:(default_constant_map ~f:Conversion.of_internal)
+          local_config.pre.value
+      in
+      { local_config with
+        pre = { local_config.pre with value } ;
+        template = option_map ~f:template_of_internal local_config.template }
+    let config_to_internal config =
+      { config with
+        local = local_config_to_internal config.local }
+    module Pre = functor (Monad : Monad_with_template_data) -> struct
+      let pre_render is_outmost submit names ~config ~config_override =
+        let module Pre = Form.Pre (Monad) in
+        Pre.pre_render is_outmost submit names
+          ~config:(config_to_internal config)
+          ~config_override:(config_to_internal config_override)
+    end
+    type repr = Form.repr
+    type param_names = Form.param_names
+    type id = Form.id
+    let repr = Form.repr -| Conversion.to_internal
+    let fresh_id = Form.fresh_id
+    let set_config_once ?id config =
+      Form.set_config_once ?id @
+        config_to_internal config
+    let params = Form.params
+    let local_config_fun_to_internal k =
+      Local_config.fun_ @ fun local_config ->
+        Local_config.bind (local_config_to_internal local_config) k
+    let content ?submit ?id =
+      local_config_fun_to_internal @
+        Form.content ?submit ?id
+    let content_lwt ?submit ?id =
+      local_config_fun_to_internal @
+        Form.content_lwt ?submit ?id
+    let display ~value =
+      local_config_fun_to_internal @
+        Form.display ~value:(Conversion.to_internal value)
+    let display_lwt ~value =
+      local_config_fun_to_internal @
+        Form.display_lwt ~value:(Conversion.to_internal value)
+    let config =
+      local_config_fun_to_internal Form.config
+    let config =
+      local_config_fun_to_internal @
+        Local_config.fun_ @ fun local_config () ->
+          Form.opt_component_configs_fun @ fun deep_config () ->
+            { local = local_config_of_internal local_config ;
+              deep = deep_config }
+    let get_handler f =
+      Form.get_handler @ fun ?id get post ->
+        f ?id (Conversion.of_internal get) post
+    let post_handler f =
+      Form.post_handler @ fun ?id get post ->
+        f ?id get (Conversion.of_internal post)
 end
 
 (******************************************************************************)
