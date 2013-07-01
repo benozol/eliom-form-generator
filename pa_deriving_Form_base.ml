@@ -68,6 +68,7 @@ module Builder (Loc : Defs.Loc) = struct
     | hd :: tl -> hd :: append x tl
 
   let form_module_name = Printf.sprintf "Form_%s"
+  let form_options_module_name = Printf.sprintf "Form_%s_options"
   let component_module_name = Printf.sprintf "Component_%s"
 
   let get_simple_type = function
@@ -147,7 +148,6 @@ module Builder (Loc : Defs.Loc) = struct
         let form_id = Helpers.modname_from_qname ~qname ~classname:"Form" in
         let id = Ast.IdAcc (_loc, form_id, Ast.IdLid (_loc, "id")) in
         <:str_item<
-          type $lid:"form_"^type_name^"_id"$ = $id:id$
           module $uid:"Form_"^type_name$ = $id:form_id$
         >>
       | type_name, [], `Fresh (_, repr, _), [], _ ->
@@ -520,34 +520,36 @@ module Builder (Loc : Defs.Loc) = struct
           <:str_item< let project_selector_param_name = fst >>
         in
         <:str_item<
-          module $uid:form_module_name type_name$ = struct
+          module $uid:form_options_module_name type_name$ = struct
             open Deriving_Form_base
-            module Options = struct
-              type a = $lid:type_name$
-              ;; $Ast.stSem_of_list component_module_decls$
-              type raw_param_names = $raw_param_names_ctyp$
-              type deep_config = $deep_config_ctyp$
-              include Template_data_unit (struct type t = a end)
-              let default_deep_config = $default_deep_config_expr$
-              type raw_repr = $raw_repr_ctyp$
-              let component_names = $Helpers.expr_list component_name_strings$
-              let of_raw_repr = $of_raw_repr_expr$
-              let to_raw_repr = $to_raw_repr_expr$
-              ;; $Ast.stSem_of_list prefix_decls$
-              let params' = $params'_expr$
-              type ('arg, 'res) opt_component_configs_fun =
-                $Helpers.Untranslate'.expr opt_component_configs_fun_type$
-              let opt_component_configs_fun k =
-                $exp:opt_component_configs_fun$
-              let apply_component_configs (f : (_, _) opt_component_configs_fun) x = f x
-              let default_template = default_template
-              let $lid:components_list_name$ :
-                (a, raw_param_names, deep_config) $ctyp_of_qname component_type_name$ list =
-                $fields_expr$
-              ;; $project_selector_param_name_decl$
-            end
-            include $id:ident_of_qname make_module_name$ (Options)
+            type a = $lid:type_name$
+            ;; $Ast.stSem_of_list component_module_decls$
+            type raw_param_names = $raw_param_names_ctyp$
+            type deep_config = $deep_config_ctyp$
+            include Template_data_unit (struct type t = a end)
+            let default_deep_config = $default_deep_config_expr$
+            type raw_repr = $raw_repr_ctyp$
+            let component_names = $Helpers.expr_list component_name_strings$
+            let of_raw_repr = $of_raw_repr_expr$
+            let to_raw_repr = $to_raw_repr_expr$
+            ;; $Ast.stSem_of_list prefix_decls$
+            let params' = $params'_expr$
+            type ('arg, 'res) opt_component_configs_fun =
+              $Helpers.Untranslate'.expr opt_component_configs_fun_type$
+            let opt_component_configs_fun k =
+              $exp:opt_component_configs_fun$
+            let apply_component_configs (f : (_, _) opt_component_configs_fun) x = f x
+            let default_template = default_template
+            let $lid:components_list_name$ :
+              (a, raw_param_names, deep_config) $ctyp_of_qname component_type_name$ list =
+              $fields_expr$
+            ;; $project_selector_param_name_decl$
           end
+          module $uid:form_module_name type_name$ : Deriving_Form.Form
+            with
+              type a = $lid:type_name$ and
+              type ('arg, 'res) opt_component_configs_fun = ('arg, 'res) $uid:form_options_module_name type_name$.opt_component_configs_fun =
+            $id:ident_of_qname make_module_name$ ($uid:form_options_module_name type_name$)
         >>
       | _ ->
         Base.fatal_error _loc "Form not available here"
