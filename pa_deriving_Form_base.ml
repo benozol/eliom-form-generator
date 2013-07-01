@@ -143,6 +143,13 @@ module Builder (Loc : Defs.Loc) = struct
   let generate : Type.decl list -> Ast.str_item =
     let (%) f g = fun x -> f (g x) in
     let for_decl : Type.decl -> Ast.str_item  = function
+      | type_name, [], `Expr (`Constr (qname, [])), [], _ ->
+        let form_id = Helpers.modname_from_qname ~qname ~classname:"Form" in
+        let id = Ast.IdAcc (_loc, form_id, Ast.IdLid (_loc, "id")) in
+        <:str_item<
+          type $lid:"form_"^type_name^"_id"$ = $id:id$
+          module $uid:"Form_"^type_name$ = $id:form_id$
+        >>
       | type_name, [], `Fresh (_, repr, _), [], _ ->
         let component_names, component_types =
           let fields =
@@ -542,7 +549,9 @@ module Builder (Loc : Defs.Loc) = struct
             include $id:ident_of_qname make_module_name$ (Options)
           end
         >>
-      | _ -> Base.fatal_error _loc "Form not available here"
+      | _ ->
+        Base.fatal_error _loc "Form not available here"
+
     in
     fun decls ->
       Ast.stSem_of_list
