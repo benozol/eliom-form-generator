@@ -170,9 +170,8 @@ module Make
            (variant_renderings submit param_names config.deep config_override.deep local.pre.value))
          @ fun component_renderings ->
            let pre =
-             let here_a =
+             let a =
                let hidden, value' = hidden_value local.pre.value in
-               let a_form_sum_class = Eliom_content.Html5.F.a_class [ form_sum_class ] in
                let a_form_sum_variant =
                  match value' with
                    | Some default ->
@@ -193,9 +192,11 @@ module Make
                    [ Eliom_content.Html5.F.a_style "display: none" ]
                  else []
                in
-               a_form_sum_class :: a_form_sum_variant @@ maybe_style_hidden
+               Eliom_content.Html5.F.a_class [ form_class ; form_sum_class ]
+                 :: a_form_sum_variant @@ maybe_style_hidden
+                 @@ option_get ~default:[] local.pre.a
              in
-             { local.pre with a = Some (here_a @@ option_get ~default:[] local.pre.a) }
+             { local.pre with a = Some a  }
            in
            Monad.return @ set_required_for_outmost ~is_outmost @ template @
              Template.arguments ~is_outmost ?submit ~config:pre
