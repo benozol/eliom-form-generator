@@ -243,11 +243,7 @@ let template_table =
                let submits =
                  maybe_get_option_map is_outmost submit
                    (fun submit ->
-                     [tr ~a:[a_class ["field"]]
-                         [td [];
-                          td ~a:[a_class ["form_submit"]; a_colspan 3]
-                            [button ~button_type:`Submit submit];
-                          td []]])
+                     [button ~button_type:`Submit submit])
                in
                let fields =
                  List.map from_some @
@@ -279,14 +275,17 @@ let template_table =
                                       (label :: content :: annotation))))
                    field_renderings
                in
-               let contents = captions @@ fields @@ annotations @@ submits in
+               let contents = captions @@ fields @@ annotations in
                let outmost_class = if is_outmost then ["outmost"] else [] in
-               match contents with
-               | [] -> []
-               | hd :: tl -> [
-                 table ~a:(a_class (["form"; form_class] @@ outmost_class) :: a)
-                   hd tl
-               ]))
+               let table =
+                 match contents with
+                   | [] -> ([] : form_content)
+                   | hd :: tl ->
+                     [ table ~a:(a_class (["form"; form_class] @@ outmost_class) :: a)
+                         hd tl  ]
+               in
+               table @@ submits
+             ))
       arguments
 
 let default_template =
