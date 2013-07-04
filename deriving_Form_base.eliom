@@ -806,10 +806,16 @@ let set_required_for_outmost ~is_outmost = function
     ignore {unit{
       Eliom_client.onload
         (fun () ->
-          form_inputs_set_required
-            (Eliom_content.Html5.To_dom.of_element
-               (Eliom_content.Html5.Id.get_element %id)))
+          try
+            (* TODO Execute this only when the node is actually
+               inserted into the DOM. *)
+            form_inputs_set_required
+              (Eliom_content.Html5.To_dom.of_element
+                 (Eliom_content.Html5.Id.get_element %id))
+          with Not_found ->
+            debug "Ignoring")
     }};
     Eliom_content.Html5.Id.create_named_elt ~id elt :: elts
   | elts -> elts
+
 }}
