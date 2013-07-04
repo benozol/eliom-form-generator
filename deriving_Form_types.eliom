@@ -173,6 +173,48 @@ module Form_string =
       let default_widget = form_string_default_widget false
      end)
 
+type text = string
+
+let form_text_default_widget can_be_empty : (text, _, _) widget =
+  let open Eliom_content.Html5.F in
+  fun ~param_names ?value ?(a=[]) ~template_data:() () ->
+    let not_required_class_maybe, required_maybe =
+      if can_be_empty then
+        [component_not_required_class], []
+      else
+        [], [a_required `Required]
+    in
+    let local_class_a = a_class not_required_class_maybe in
+    let hidden, value' = hidden_value value in
+    match param_names with
+    | `Param_names (_, param_names) ->
+      let a = if hidden then a_hidden `Hidden :: a else a in
+      let a = local_class_a :: required_maybe @@ (a :> Html5_types.textarea_attrib Eliom_content.Html5.attrib list) in
+      [
+        textarea ~a ~name:param_names ?value:value' ();
+        input_marker;
+      ]
+    | `Display ->
+      if not hidden then
+        option_get_map ~default:[] ~f:(list_singleton -| pcdata)
+          value'
+      else []
+
+
+module Form_text =
+  Make_atomic
+    (struct
+      type a = string
+      type param_name = [`One of string] Eliom_parameter.param_name
+      type template_data = unit
+      type 'res template_data_fun = template_data -> 'res
+      let template_data ~value:_ = identity
+      let template_data_lwt ~value:_ = Lwt.return
+      let apply_template_data_fun f = f ()
+      let params_type = Eliom_parameter.string
+      let default_widget = form_text_default_widget false
+     end)
+
 module Form_int =
   Make_atomic
     (struct
@@ -314,5 +356,12 @@ module Form_string_or_empty =
     (struct
       include Form_string.Atomic_options
       let default_widget = form_string_default_widget true
+     end)
+type text_or_empty = string
+module Form_text_or_empty =
+  Make_atomic
+    (struct
+      include Form_text.Atomic_options
+      let default_widget = form_text_default_widget true
      end)
 }}

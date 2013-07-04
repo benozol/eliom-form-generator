@@ -742,24 +742,35 @@ end
         (form_node ## querySelectorAll
            (ksprintf Js.string
               "input:not([type='checkbox']):not(.%s),\
+               textarea:not(.%s),\
                select:not(.%s)"
+              component_not_required_class
               component_not_required_class
               component_not_required_class))
     in
     Firebug.console ## log_4 (Js.string "form_inputs_set_required on", form_node, List.length inputs, inputs);
     List.iter
       (fun node ->
-        Js.Opt.iter (Dom_html.CoerceTo.input node)
-          (fun input ->
+        let open Dom_html in
+        match tagged node with
+          | Input input ->
             let is_required = is_required_rec input in
             Firebug.console ## log_3 (Js.string "input", is_required, input);
-            input ## required <- Js.bool is_required);
-        Js.Opt.iter (Dom_html.CoerceTo.select node)
-          (fun select ->
+            input ## required <- Js.bool is_required
+          | Select select ->
             let is_required = is_required_rec select in
             Firebug.console ## log_3 (Js.string "select", is_required, select);
-            select ## required <- Js.bool is_required);
-        ())
+            select ## required <- Js.bool is_required
+          | Textarea textarea ->
+            let is_required = is_required_rec textarea in
+            Firebug.console ## log_3 (Js.string "textarea", is_required, textarea);
+            textarea ## required <- Js.bool is_required
+          |A _|Area _|Base _|Blockquote _|Body _|Br _|Button _|Canvas _|Caption _
+          |Col _|Colgroup _|Del _|Div _|Dl _|Fieldset _|Form _|Frameset _|Frame _
+          |H1 _|H2 _|H3 _|H4 _|H5 _|H6 _|Head _|Hr _|Html _|Iframe _|Img _|Ins _
+          |Label _|Legend _|Li _|Link _|Map _|Meta _|Object _|Ol _|Optgroup _|Option _
+          |P _|Param _|Pre _|Q _|Script _|Style _|Table _|Tbody _|Td _|Tfoot _|Th _
+          |Thead _|Title _|Tr _|Ul _|Other _ -> ())
       inputs;
     let variants =
       Dom.list_of_nodeList
