@@ -291,6 +291,69 @@ let template_table =
 let default_template =
   template_table
 
+let template_concat =
+  fun arguments ->
+    Template.template
+      (let open Eliom_content.Html5.F in
+       fun ~is_outmost ?submit ~config ~template_data:_ ~param_names:_
+         ~component_renderings:field_renderings () ->
+           Pre_local_config.bind config
+             (fun ?label ?annotation ?value:_ ?(a=[]) () ->
+               let captions =
+                 maybe_get_option_map is_outmost label
+                   (fun label ->
+                     [div ~a:[a_class ["form_label"]] label])
+               in
+               let annotations =
+                 maybe_get_option_map is_outmost annotation
+                   (fun annotation ->
+                     [div ~a:[a_class ["form_annotation"]] annotation])
+               in
+               let submits =
+                 maybe_get_option_map is_outmost submit
+                   (fun submit ->
+                     [button ~button_type:`Submit submit])
+               in
+               let fields =
+                 List.map from_some @
+                   List.filter is_some @
+                     List.map
+                       (flip Component_rendering.bind
+                          (fun ~content ?(a=[]) ?(label=[]) ?annotation ?value () ->
+                            if annotation = None && content = [] then
+                              None
+                            else
+                              let label =
+                                div ~a:[a_class ["label"]] label
+                              in
+                              let content =
+                                div ~a:[a_class ["content"]] content
+                              in
+                              let annotation =
+                                option_to_list
+                                  (option_map
+                                     ~f:(div ~a:[a_class ["annotation"]])
+                                     annotation)
+                              in
+                              let maybe_hidden =
+                                if value = Some `Constant then
+                                  [ a_style "display: none" ]
+                                else []
+                              in
+                              Some (div ~a:(a_class ["field"] :: maybe_hidden @@ a)
+                                      (label :: content :: annotation))))
+                   field_renderings
+               in
+               let contents = captions @@ fields @@ annotations in
+               let outmost_class = if is_outmost then ["outmost"] else [] in
+               let table =
+                 [ div ~a:(a_class (["form"; form_class] @@ outmost_class) :: a)
+                     contents ]
+               in
+               table @@ submits
+             ))
+      arguments
+
 
 type id_repr = int option
 type id_param_name = [`One of int] Eliom_parameter.param_name
