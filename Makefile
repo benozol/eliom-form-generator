@@ -1,5 +1,6 @@
 PKG_NAME := deriving-eliom-form
 
+
 WARNINGS = -w +0..29
 ELIOMC = eliomc $(WARNINGS)
 JS_OF_ELIOM = js_of_eliom $(WARNINGS)
@@ -8,23 +9,22 @@ OCAMLC = ocamlfind ocamlc $(WARNINGS)
 SERVER_DIR = server
 CLIENT_DIR = client
 
-export ELIOM_TYPE_DIR = _server
+export ELIOM_TYPE_DIR = _types
 export ELIOM_SERVER_DIR = _server
 export ELIOM_CLIENT_DIR = _client
 
 FILES = files
 
-OPTS := -thread -package deriving-ocsigen
-PA_COPTS := -package deriving-ocsigen.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o
-PA_COPTS_TC := -package deriving-ocsigen.syntax_tc,js_of_ocaml.deriving.syntax_tc,camlp4.quotations.o
+OPTS := -thread -package deriving-ocsigen,deriving-typerepr
+PA_COPTS := -package deriving-ocsigen.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o,deriving-typerepr.syntax
 
 .PHONY: all clean install uninstall depend
 
 SOURCE_FILES=$(wildcard *.eliom)
 cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
 
+all: META $(ELIOM_CLIENT_DIR)/generate_form.cmo $(ELIOM_SERVER_DIR)/generate_form.cmo
 
-all: pa_deriving_Form.cma pa_deriving_Form_tc.cma $(addprefix $(ELIOM_SERVER_DIR)/, $(call cmo_files,-server)) $(addprefix $(ELIOM_CLIENT_DIR)/, $(call cmo_files,-client)) $(ELIOM_CLIENT_DIR)/deriving_Form.cmo META
 
 $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
 	$(ELIOMC) -infer -package js_of_ocaml $(PA_COPTS) $<
@@ -40,15 +40,6 @@ $(ELIOM_CLIENT_DIR)/%.cmo: %.eliom
 
 %_tc.cmo: %_tc.ml
 	$(OCAMLC) -syntax camlp4o $(PA_COPTS_TC) -c -o $@ $<
-
-pa_deriving_Form_tc.cmo: pa_deriving_Form_base.cmo
-pa_deriving_Form.cmo: pa_deriving_Form_base.cmo
-
-pa_deriving_Form.cma: pa_deriving_Form_base.cmo pa_deriving_Form.cmo
-	$(OCAMLC) -a -o $@ $^
-
-pa_deriving_Form_tc.cma: pa_deriving_Form_base.cmo pa_deriving_Form_tc.cmo
-	$(OCAMLC) -a -o $@ $^
 
 ifneq ($(MAKECMDGOALS),distclean)
 ifneq ($(MAKECMDGOALS),clean)
@@ -77,13 +68,13 @@ META: META.in Makefile .depend
 	  $< > $@
 
 install: all
-	ocamlfind install $(PKG_NAME) META pa_deriving_Form.cma pa_deriving_Form_tc.cma
+	ocamlfind install $(PKG_NAME) META
 	cp -r $(FILES) `ocamlfind query $(PKG_NAME)`/$(FILES)
 	cp -r $(ELIOM_SERVER_DIR) `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR)
 	cp -r $(ELIOM_CLIENT_DIR) `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR)
 
 uninstall:
-	rm -rf `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR) \
-	       `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR) \
-	       `ocamlfind query $(PKG_NAME)`/$(FILES)
+	 rm -rf `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR) \
+	        `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR) \
+	        `ocamlfind query $(PKG_NAME)`/$(FILES)
 	ocamlfind remove $(PKG_NAME)

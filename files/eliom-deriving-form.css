@@ -39,3 +39,7 @@ table.__eliom_form__.outmost > tr.__eliom_form__:first-child > td {
 :invalid + .__eliom_form_input_marker__:before {
     content: "!";
 }
+
+__eliom__form__.eliom-form-option > div {
+    display: inline-block;
+}
