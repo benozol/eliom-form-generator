@@ -463,8 +463,17 @@
         | List t ->
           if category <> `List then
             Eliom_lib.error_any node "data_from_form: not list";
+          let ul =
+            Js.Opt.get
+              (Js.Opt.bind
+                 (Js.Opt.bind
+                    (node ## childNodes ## item (0))
+                    Dom_html.CoerceTo.element)
+                 Dom_html.CoerceTo.ul) @
+              fun () -> Eliom_lib.error_any node "data_from_form: first element not an ul"
+          in
           let items =
-            flip List.map (Dom.list_of_nodeList @ node ## childNodes) @ fun li ->
+            flip List.map (Dom.list_of_nodeList @ ul ## childNodes) @ fun li ->
               let li =
                 Js.Opt.get (Js.Opt.bind (Dom_html.CoerceTo.element li) Dom_html.CoerceTo.li) @
                   fun () -> Eliom_lib.error_any li "data_from_form: not a li"
