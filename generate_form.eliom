@@ -414,7 +414,7 @@
               in
               create_tuple components
                 { create_tuple_component =
-                    fun (Component (t, ix) as component) ->
+                    fun (Component (t, ix)) ->
                       data_from_form (List.nth component_contents ix) t }
       in
       let category = categorize_form node in
@@ -568,8 +568,8 @@
         ignore @ form' ## onsubmit <- Eliom_client.form_handler;
         form' ## submit ()
 
-  let aux_list_item_ref : (string -> int -> Deriving_Typerepr.any_t -> Html5_types.li elt) ref =
-    ref @ fun _ _ _ -> failwith "aux_list_item_ref"
+  let aux_list_item_ref : (string -> Deriving_Typerepr.any_t -> Html5_types.li elt) ref =
+    ref @ fun _ _ -> failwith "aux_list_item_ref"
 }}
 
 {shared{
@@ -606,7 +606,7 @@
 
   and aux_form_values : string -> any_t_opt_value list -> form_content elt list =
     fun name t_values ->
-      flip List.mapi t_values @ fun ix (Any_t_opt_value (t, value)) ->
+      flip List.map t_values @ fun (Any_t_opt_value (t, value)) ->
         aux_form ?value name t
 
   and aux_form_sum  : 'a . ?a_local:_ -> ?value:'a -> string -> 'a sum -> form_content elt =
@@ -629,7 +629,7 @@
             div ~a:[a_class [sum_case_class; sum_case_marker_class summand_name]] @
               match summand with
                 | Summand_constant _ -> []
-                | Summand_alloc (ix, tuple) ->
+                | Summand_alloc (_, tuple) ->
                   let value = Option.bind value (get_sum_case summand) in
                   [ aux_form_tuple ?value name tuple ]
       in
@@ -671,8 +671,8 @@
       Html5.D.table ~a:(a_class[form_class; record_class] :: a_local)
         (List.hd rows) (List.tl rows)
 
-  and aux_list_item : 'a . ?value:'a -> string -> int -> 'a Deriving_Typerepr.t -> Html5_types.li elt =
-    fun (type a) ?(value:a option) name ix (t : a t) ->
+  and aux_list_item : 'a . ?value:'a -> string -> 'a Deriving_Typerepr.t -> Html5_types.li elt =
+    fun (type a) ?(value:a option) name (t : a t) ->
       let remove =
         Html5.D.Raw.a ~a:[a_class [button_remove_class]] [
           span ~a:[a_class [label_class]] [pcdata "remove"];
@@ -834,5 +834,5 @@
 
 {client{
   let () =
-    aux_list_item_ref := fun name ix (Any_t t) -> aux_list_item ?value:None name ix t
+    aux_list_item_ref := fun name (Any_t t) -> aux_list_item ?value:None name t
 }}
