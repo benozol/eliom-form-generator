@@ -82,6 +82,9 @@
   let content_snippet = "content"
   let list_class = "eliom-form-list"
   let list_item_class = "eliom-form-list-item"
+  let button_add_class = "eliom-form-add-elt"
+  let button_remove_class = "eliom-form-remove-elt"
+  let label_class = "eliom-form-label"
   let marker = Eliom_content.Html5.F.(span ~a:[a_class [marker_class]] [])
   let marked ?a input = Eliom_content.Html5.D.span ?a [ input ; marker ]
 }}
@@ -478,8 +481,15 @@
                 Js.Opt.get (Js.Opt.bind (Dom_html.CoerceTo.element li) Dom_html.CoerceTo.li) @
                   fun () -> Eliom_lib.error_any li "data_from_form: not a li"
               in
-              Js.Opt.get (li ## childNodes ## item (0)) @
-                fun () -> Eliom_lib.error_any li "data_from_form: no li content"
+              if has_class li list_item_class then
+                Some
+                  (Js.Opt.get (li ## childNodes ## item (0)) @
+                     fun () -> Eliom_lib.error_any li "data_from_form: no li content")
+              else None
+          in
+          let items =
+            List.map (function Some item -> item | None -> assert false) @
+              List.filter ((<>) None) items
           in
           List.map (flip data_from_form t) items
         | Sum { summands } ->
@@ -663,7 +673,12 @@
 
   and aux_list_item : 'a . ?value:'a -> string -> int -> 'a Deriving_Typerepr.t -> Html5_types.li elt =
     fun (type a) ?(value:a option) name ix (t : a t) ->
-      let remove = Html5.D.button ~button_type:`Button [pcdata "remove"] in
+      let remove =
+        Html5.D.Raw.a ~a:[a_class [button_remove_class]] [
+          span ~a:[a_class [label_class]] [pcdata "remove"];
+          marker;
+        ]
+      in
       let item =
         Html5.D.li ~a:[a_class [list_item_class]] [
           aux_form ?value name t;
@@ -673,7 +688,7 @@
       ignore {unit{
         onload_or_now @ fun () ->
           Lwt.async @ fun () ->
-            let remove = Html5.To_dom.of_button %remove in
+            let remove = Html5.To_dom.of_element %remove in
             let item = Html5.To_dom.of_li %item in
             Lwt_js_events.clicks remove @ fun _ _ ->
               let _outmost =
@@ -757,33 +772,39 @@
 
   and aux_form_list : 'a . ?value:'a list -> ?a_local:_  -> name -> 'a t -> form_content elt =
     fun (type a) ?(value : a list option) ?(a_local=[]) name (t : a t) ->
+      let add =
+        Html5.D.Raw.a ~a:[a_class [button_add_class]] [
+          span ~a:[a_class [label_class]] [pcdata "add"];
+          marker
+        ]
+      in
+      let add_li = Html5.D.li [ add ] in
       let content =
         Html5.D.ul @
-          match value with
+          (match value with
             | None ->
               []
             | Some values ->
-              flip List.mapi values @
-                fun ix value ->
-                  aux_list_item ~value name ix t
+              flip List.map values @
+                fun value ->
+                  aux_list_item ~value name t) @@
+          [ add_li ]
       in
-      let add = Html5.D.button ~button_type:`Button [pcdata "add"] in
       ignore {unit{
         onload_or_now @ fun () ->
           Lwt.async @ fun () ->
-            let add = Html5.To_dom.of_button %add in
+            let add = Html5.To_dom.of_element %add in
             let content = Html5.To_dom.of_element %content in
             Lwt_js_events.clicks add @ fun _ _ ->
-              let ix = content ## childNodes ## length in
-              let item = !aux_list_item_ref %name ix %(Any_t t) in
-              Html5.Manip.appendChild %content item;
+              let item = !aux_list_item_ref %name %(Any_t t) in
+              Html5.Manip.appendChild ~before:%add_li %content item;
               reset_required @
                 Option.get' (fun () -> Eliom_lib.error_any item "No outmost'") @
                 parent_with_class form_outmost_class content;
               Lwt.return ()
       }};
       let a = a_class [form_class; list_class] :: (a_local :> Html5_types.div_attrib attrib list) in
-      Html5.D.div ~a [content; add]
+      Html5.D.div ~a [content]
 
   let content : 'a . 'a t -> ?value:'a ->
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
