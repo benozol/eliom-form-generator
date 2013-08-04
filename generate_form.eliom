@@ -10,15 +10,14 @@
   type 'a elt = 'a Eliom_content.Html5.elt
 
   external (@) : ('a -> 'b) -> 'a -> 'b = "%apply"
-  external (<@) : ('a -> 'b) -> 'a -> 'b = "%apply"
   external identity : 'a -> 'a = "%identity"
   let (-|) f g x = f (g x)
   let (|-) f g x = g (f x)
   let (@@) = List.append
   let flip f x y = f y x
   let flip2 f x y z = f z x y
-  let if_applies p x =
-    if p x then [ x ] else []
+  let cons_if p x xs =
+    if p x then x :: xs else xs
   let before f x = f x; x
   module Option = struct
     let map f = function
@@ -53,8 +52,6 @@
     in
     Printf.ksprintf k fmt
 
-  let ($) node selector = node ## querySelector (Js.string selector)
-  let ($$) node selector = node ## querySelectorAll (Js.string selector)
 }}
 {server{
   let trace fmt = ksprintf (fun str -> Ocsigen_messages.console @ fun () -> str) fmt
@@ -211,7 +208,7 @@
     flip ksprintf fmt @ fun selector ->
       trace_any node "querySelector: %s" selector;
       let node = (node :> Dom_html.element Js.t) in
-      let nodes = Dom.list_of_nodeList (node $$ selector) in
+      let nodes = Dom.list_of_nodeList (node ## querySelectorAll (Js.string selector)) in
       Option.from_list  @
         flip List.filter nodes @ fun node' ->
           not @ List.exists not_between @
@@ -222,7 +219,7 @@
     flip ksprintf fmt @ fun selector ->
       trace_any node "querySelectorAll: %s" selector;
       let node = (node :> Dom_html.element Js.t) in
-      let nodes = Dom.list_of_nodeList (node $$ selector) in
+      let nodes = Dom.list_of_nodeList (node ## querySelectorAll (Js.string selector)) in
       flip List.filter nodes @ fun node' ->
         not @ List.exists not_between @
           path ~inclusive_from:false ~inclusive_to:false
@@ -291,7 +288,7 @@
             else
               let case_content = sum_case parent case in
               with_class_id form @ fun class_id ->
-                Js.Opt.test (case_content $ sprintf ".%s" class_id)
+                Js.Opt.test (case_content ## querySelector (js_string ".%s" class_id))
 
   let rec is_required_form node =
     trace_any node "is_required_form";
@@ -327,10 +324,6 @@
     trace_any node "is_required_atomic";
     if not @ has_class node atomic_class then
       Eliom_lib.error_any node "is_required_atomic";
-    (* let form = *)
-    (*   Option.get' (fun () -> Eliom_lib.error_any node "is_required_atomic: not within generated form") @ *)
-    (*     parent_with_class form_class node *)
-    (* in *)
     is_required_form node
 
   let set_required_atomic (node : Dom_html.element Js.t) required =
@@ -338,7 +331,7 @@
     if not @ has_class node atomic_class then
       Eliom_lib.error_any node "set_required_atomic";
     let input =
-      Js.Opt.get (node $ sprintf "input, textarea, select")
+      Js.Opt.get (node ## querySelector (js_string "input, textarea, select"))
         (fun () -> Eliom_lib.error_any node "set_required_atomic: no control")
     in
     set_required input required
@@ -366,21 +359,21 @@
 
     List.iter (fun input -> set_required_atomic input @ is_required_atomic input) @
       before (Eliom_lib.trace "%i atomics to reset required" -| List.length) @
-        Dom.list_of_nodeList (outmost $$ sprintf ".%s" atomic_class);
+        Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" atomic_class));
 
     List.iter (fun input -> set_required_sum_selector input @ is_required_sum_selector input) @
       before (Eliom_lib.trace "%i sum selectors to reset required" -| List.length) @
-        Dom.list_of_nodeList (outmost $$ sprintf ".%s" sum_selector_class);
+        Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" sum_selector_class));
 
     List.iter set_sum_hidden @
       before (Eliom_lib.trace "%i sums" -| List.length) @
-        if_applies (flip has_class sum_class) outmost @@
-          Dom.list_of_nodeList (outmost $$ sprintf ".%s" sum_class);
+        cons_if (flip has_class sum_class) outmost @
+          Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" sum_class));
 
     List.iter set_option_hidden @
       before (Eliom_lib.trace "%i options" -| List.length) @
-        if_applies (flip has_class option_class) outmost @@
-          Dom.list_of_nodeList (outmost $$ sprintf ".%s" option_class);
+        cons_if (flip has_class option_class) outmost @
+          Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" option_class));
 
     ()
 
