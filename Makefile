@@ -1,7 +1,7 @@
 PKG_NAME := deriving-eliom-form
 
 
-WARNINGS = -w +0..29
+WARNINGS = -w +0..29-4
 ELIOMC = eliomc $(WARNINGS)
 JS_OF_ELIOM = js_of_eliom $(WARNINGS)
 OCAMLC = ocamlfind ocamlc $(WARNINGS)
