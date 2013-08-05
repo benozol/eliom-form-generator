@@ -388,27 +388,17 @@
       in
       let open Deriving_Typerepr in
       let aux_tuple : 'a . Dom_html.element Js.t -> 'a tuple -> 'a =
-        fun (type a) node (t : a tuple) ->
+        fun (type a) node { components } ->
           let category = categorize_form node in
-          match (t : a tuple) with
-            | Singleton t ->
-              if category <> `Tuple then
-                Eliom_lib.error_any node "data_from_form: not tuple (singleton)";
-              let component =
-                Js.Opt.get (node ## childNodes ## item (0)) @
-                  fun () -> Eliom_lib.error_any node "data_from_form: no component for singleton tuple"
-              in
-              data_from_form component t
-            | Composed components ->
-              if category <> `Tuple then
-                Eliom_lib.error_any node "data_from_form: not tuple (composed)";
-              let component_contents =
-                Dom.list_of_nodeList (node ## childNodes)
-              in
-              create_tuple components
-                { create_tuple_component =
-                    fun (Component (t, ix)) ->
-                      data_from_form (List.nth component_contents ix) t }
+          if category <> `Tuple then
+            Eliom_lib.error_any node "data_from_form: not tuple (composed)";
+          let component_contents =
+            Dom.list_of_nodeList (node ## childNodes)
+          in
+          create_tuple components
+            { create_tuple_component =
+                fun (Component (t, ix)) ->
+                  data_from_form (List.nth component_contents ix) t }
       in
       let category = categorize_form node in
       let get_atomic_string name =
@@ -428,16 +418,16 @@
             | `Fieldset _ -> assert false
       in
       match (t : a t) with
-        | Unit ->
+        | Atomic Unit ->
           if category <> `Atomic then
             Eliom_lib.error_any node "data_from_form: unit not atomic";
           (() : a)
-        | String -> identity @ get_atomic_string "string"
-        | Int -> int_of_string @ get_atomic_string "int"
-        | Float -> float_of_string @ get_atomic_string "float"
-        | Int32 -> Int32.of_string @ get_atomic_string "int32"
-        | Int64 -> Int64.of_string @ get_atomic_string "int64"
-        | Bool ->
+        | Atomic String -> identity @ get_atomic_string "string"
+        | Atomic Int -> int_of_string @ get_atomic_string "int"
+        | Atomic Float -> float_of_string @ get_atomic_string "float"
+        | Atomic Int32 -> Int32.of_string @ get_atomic_string "int32"
+        | Atomic Int64 -> Int64.of_string @ get_atomic_string "int64"
+        | Atomic Bool ->
           if category <> `Atomic then
             Eliom_lib.error_any node "data_from_form: bool not atomic";
           (match Option.bind (querySelector node "input[type=checkbox]") control_element with
@@ -494,9 +484,17 @@
             Eliom_lib.error_any node "data_from_form: no case selected";
           let Any_summand summand = List.assoc case summands in
           (match summand with
-            | Summand_constant _ as summand ->
+            | Summand_nullary _ as summand ->
               create_sum_case summand ()
-            | Summand_alloc (_, tuple) as summand ->
+            | Summand_unary unary_summand as summand ->
+              let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
+              let content =
+                Js.Opt.get (sum_case node case) ## childNodes ## item(0) @
+                  fun () -> Eliom_lib.error_any  node "data_from_form: no elt for sum case %S" case
+              in
+              create_sum_case summand @ data_from_form content t
+            | Summand_nary nary_summand as summand ->
+              let _, tuple = (nary_summand : (_, _) nary_summand :> _ * _) in
               let content =
                 Js.Opt.get
                   (Js.Opt.bind
@@ -574,33 +572,11 @@
     | Any_t_opt_value : 'a t * 'a option -> any_t_opt_value
 
   let rec aux_form_tuple : 'a . ?a_local:_ -> ?value:'a -> string -> 'a tuple -> form_content elt =
-    fun ?(a_local=[]) ?value name tuple ->
+    fun ?(a_local=[]) ?value name { components } ->
       Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a_local) @
-        match value with
-          | None ->
-            begin
-              match tuple with
-                | Singleton t ->
-                  [ aux_form name t ]
-                | Composed ts ->
-                  aux_form_values name @
-                    flip List.map ts @ fun (Any_component (Component (t, _))) ->
-                      Any_t_opt_value (t, None)
-            end
-          | Some value ->
-            match tuple with
-              | Singleton t ->
-                [ aux_form ~value name t ]
-              | Composed components ->
-                aux_form_values name @
-                  let sub_values = get_tuple_components components value in
-                  flip List.map sub_values @ fun (Dyn (t, value)) ->
-                    Any_t_opt_value (t, Some value)
-
-  and aux_form_values : string -> any_t_opt_value list -> form_content elt list =
-    fun name t_values ->
-      flip List.map t_values @ fun (Any_t_opt_value (t, value)) ->
-        aux_form ?value name t
+        flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
+          let value = Option.map (get_tuple_component component) value in
+          aux_form ?value name t
 
   and aux_form_sum  : 'a . ?a_local:_ -> ?value:'a -> string -> 'a sum -> form_content elt =
     fun ?(a_local=[]) ?value name { summands } ->
@@ -620,10 +596,14 @@
         div ~a:[a_class [sum_content_class]] @
           flip List.map summands @ fun (summand_name, Any_summand summand) ->
             div ~a:[a_class [sum_case_class; sum_case_marker_class summand_name]] @
+              let value = Option.bind value (get_sum_case_by_summand summand) in
               match summand with
-                | Summand_constant _ -> []
-                | Summand_alloc (_, tuple) ->
-                  let value = Option.bind value (get_sum_case_by_summand summand) in
+                | Summand_nullary _ -> []
+                | Summand_unary unary_summand ->
+                  let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
+                  [ aux_form ?value name t ]
+                | Summand_nary nary_summand ->
+                  let (_, tuple) = (nary_summand : (_, _) nary_summand :> _ * _) in
                   [ aux_form_tuple ?value name tuple ]
       in
       ignore {unit{
@@ -703,21 +683,22 @@
       in
       let a_atomic = a_class [form_class; atomic_class] :: Option.get [] a_local in
       match t with
-        | String ->
+        | Atomic Unit -> Html5.D.span ~a:a_atomic []
+        | Atomic String ->
           marked ~a:a_atomic @ raw_input ~input_type:`Text ?value ~name ()
-        | Int ->
+        | Atomic Int ->
           let value = Option.map string_of_int value in
           marked ~a:a_atomic @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
-        | Int32 ->
+        | Atomic Int32 ->
           let value = Option.map Int32.to_string value in
           marked ~a:a_atomic @ raw_input~a:[a_step @ `Step 1.0]  ~input_type:`Number ?value ~name ()
-        | Int64 ->
+        | Atomic Int64 ->
           let value = Option.map Int64.to_string value in
           marked ~a:a_atomic @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
-        | Float ->
+        | Atomic Float ->
           let value = Option.map string_of_float value in
           marked ~a:a_atomic @ raw_input ~a:[a_step `Any] ~input_type:`Number ?value ~name ()
-        | Bool ->
+        | Atomic Bool ->
           marked ~a:a_atomic @ raw_checkbox ?checked:value ~name ~value:"" ()
         | Option t ->
           aux_form_option ?value ?a_local name t
@@ -729,7 +710,6 @@
           aux_form_sum ?a_local ?value name sum
         | Record record ->
           aux_form_record ?a_local ?value name record
-        | Unit -> Html5.D.span ~a:a_atomic []
         | Array _ ->
           failwith "Generate_form.form: not for array"
         | Function _ ->
@@ -799,9 +779,8 @@
       let a = a_class [form_class; list_class] :: (a_local :> Html5_types.div_attrib attrib list) in
       Html5.D.div ~a [content]
 
-  let content : 'a . 'a t -> ?value:'a ->
-    [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
-    fun (type a) (t : a Deriving_Typerepr.t) ?(value : a option) name ->
+  let content : type a . a t -> ?value:a -> [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
+    fun t ?value name ->
       let name = (Obj.magic name : string) in
       let content = aux_form ~is_outmost:true ?value name t in
       ignore {unit{
