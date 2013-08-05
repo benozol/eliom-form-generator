@@ -32,7 +32,13 @@ $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
 $(ELIOM_SERVER_DIR)/%.cmo: %.eliom
 	$(ELIOMC) -annot -c $(OPTS) $(PA_COPTS) $<
 
+$(ELIOM_SERVER_DIR)/%.cmi: %.eliomi
+	$(ELIOMC) -annot -c $(OPTS) $(PA_COPTS) $<
+
 $(ELIOM_CLIENT_DIR)/%.cmo: %.eliom
+	$(JS_OF_ELIOM) -annot -c $(OPTS) $(PA_COPTS) $<
+
+$(ELIOM_CLIENT_DIR)/%.cmi: %.eliomi
 	$(JS_OF_ELIOM) -annot -c $(OPTS) $(PA_COPTS) $<
 
 %.cmo: %.ml
