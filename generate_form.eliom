@@ -609,7 +609,7 @@
         let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
         let summands =
           flip List.map summands @ fun (summand_name, Any_summand summand) ->
-            let sub_value = flip Option.map value @ get_sum_case_from_summand summand in
+            let sub_value = flip Option.map value @ get_sum_case_by_summand summand in
 
             let selected = sub_value <> None in
             Html5.D.Option ([], summand_name, Some (pcdata summand_name), selected)
@@ -623,7 +623,7 @@
               match summand with
                 | Summand_constant _ -> []
                 | Summand_alloc (_, tuple) ->
-                  let value = Option.bind value (get_sum_case_from_summand summand) in
+                  let value = Option.bind value (get_sum_case_by_summand summand) in
                   [ aux_form_tuple ?value name tuple ]
       in
       ignore {unit{
