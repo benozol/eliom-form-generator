@@ -1,13 +1,13 @@
-names = "deriving-eliom-form"
+names = "eliom-form-generator"
 version = "0.1"
-description = "Derive Eliom forms from type declarations"
+description = "Generate Eliom forms from runtime type representation"
 package "server" (
-  requires = "eliom.server str"
   directory = "server"
+  requires = "deriving-typerepr eliom.server"
   archive(byte) = "@@SERVER_CMO_FILES@@"
 )
 package "client" (
- requires = "eliom.client str"
  directory = "client"
+ requires = "deriving-typerepr eliom.client"
  archive(byte) = "@@CLIENT_CMO_FILES@@"
 )

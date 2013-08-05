@@ -1,4 +1,4 @@
-PKG_NAME := deriving-eliom-form
+PKG_NAME := eliom-form-generator
 
 
 WARNINGS = -w +0..29-4
@@ -20,10 +20,10 @@ PA_COPTS := -package deriving-ocsigen.syntax,js_of_ocaml.deriving.syntax,camlp4.
 
 .PHONY: all clean install uninstall depend
 
-SOURCE_FILES=$(wildcard *.eliom)
+SOURCE_FILES=$(wildcard *.eliom *.eliomi)
 cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
 
-all: META $(ELIOM_CLIENT_DIR)/generate_form.cmo $(ELIOM_SERVER_DIR)/generate_form.cmo
+all: META $(ELIOM_CLIENT_DIR)/eliom_form_generator.cmo $(ELIOM_SERVER_DIR)/eliom_form_generator.cmo
 
 
 $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom

@@ -8,7 +8,7 @@
     Html5_types.form_content Eliom_content.Html5.F.elt
 
   (** Name of the installed CSS file *)
-  val css_name : string
+  val css_filename : string
 
   (** HTML class names used to generate form content *)
   val form_outmost_class : string

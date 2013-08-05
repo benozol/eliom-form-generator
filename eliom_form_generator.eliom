@@ -2,7 +2,7 @@
 
 {shared{
 
-  let css_name = "eliom-deriving-form.css"
+  let css_filename = "eliom-form-generator.css"
 
   open Html5_types
   open Eliom_content
