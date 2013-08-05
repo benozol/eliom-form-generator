@@ -23,8 +23,14 @@ PA_COPTS_TC := -package deriving-ocsigen.syntax_tc,js_of_ocaml.deriving.syntax_t
 SOURCE_FILES=$(wildcard *.eliom)
 cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
 
+TYPE_CONV=$(shell ocamlfind query deriving-ocsigen.syntax_tc 2> /dev/null)
+SYNTAX_CMAS = pa_deriving_Form.cma
+ifneq "$(TYPE_CONV)" ""
+SYNTAX_CMAS += pa_deriving_Form_tc.cma
+endif
 
-all: pa_deriving_Form.cma pa_deriving_Form_tc.cma $(addprefix $(ELIOM_SERVER_DIR)/, $(call cmo_files,-server)) $(addprefix $(ELIOM_CLIENT_DIR)/, $(call cmo_files,-client)) $(ELIOM_CLIENT_DIR)/deriving_Form.cmo META
+all: $(SYNTAX_CMAS) $(addprefix $(ELIOM_SERVER_DIR)/, $(call cmo_files,-server)) $(addprefix $(ELIOM_CLIENT_DIR)/, $(call cmo_files,-client)) $(ELIOM_CLIENT_DIR)/deriving_Form.cmo META
+
 
 $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
 	$(ELIOMC) -infer -package js_of_ocaml $(PA_COPTS) $<
@@ -77,7 +83,7 @@ META: META.in Makefile .depend
 	  $< > $@
 
 install: all
-	ocamlfind install $(PKG_NAME) META pa_deriving_Form.cma pa_deriving_Form_tc.cma
+	ocamlfind install $(PKG_NAME) META $(SYNTAX_CMAS)
 	cp -r $(FILES) `ocamlfind query $(PKG_NAME)`/$(FILES)
 	cp -r $(ELIOM_SERVER_DIR) `ocamlfind query $(PKG_NAME)`/$(SERVER_DIR)
 	cp -r $(ELIOM_CLIENT_DIR) `ocamlfind query $(PKG_NAME)`/$(CLIENT_DIR)
