@@ -505,7 +505,7 @@
                   fun () -> Eliom_lib.error_any  node "data_from_form: no tuple for sum case %S" case
               in
               create_sum_case summand @ aux_tuple content tuple)
-        | Record { fields } ->
+        | Record ({ fields } as record) ->
           if category <> `Record then
             Eliom_lib.error_any node "data_from_form: not record";
           let field_contents =
@@ -523,7 +523,7 @@
                     data_from_form (content :> Dom.node Js.t) t
                 in f }
           in
-          create_record fields f
+          create_record record f
         | Function _ ->
           failwith "Generate_form.data_from_form"
         | Ref _ ->
@@ -609,7 +609,7 @@
         let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
         let summands =
           flip List.map summands @ fun (summand_name, Any_summand summand) ->
-            let sub_value = flip Option.map value @ get_sum_case summand in
+            let sub_value = flip Option.map value @ get_sum_case_from_summand summand in
 
             let selected = sub_value <> None in
             Html5.D.Option ([], summand_name, Some (pcdata summand_name), selected)
@@ -623,7 +623,7 @@
               match summand with
                 | Summand_constant _ -> []
                 | Summand_alloc (_, tuple) ->
-                  let value = Option.bind value (get_sum_case summand) in
+                  let value = Option.bind value (get_sum_case_from_summand summand) in
                   [ aux_form_tuple ?value name tuple ]
       in
       ignore {unit{
