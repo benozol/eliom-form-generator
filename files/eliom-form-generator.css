@@ -1,5 +1,5 @@
 
-.eliom_form td.label:not(:empty):after { content: ": "; }
+.eliom-form td.eliom-form-label:not(:empty):after { content: ": "; }
 
 .eliom-form-add-elt, .eliom-form-remove-elt {
   cursor: pointer;
@@ -14,12 +14,12 @@
   content: "-";
 }
 
-.eliom_form input {
+.eliom-form input {
     box-shadow: 0px 0px 1px 2px rgba(0,0,0,0.5);
     border: none;
     outline: none;
 }
-.eliom_form input:invalid {
+.eliom-form input:invalid {
     box-shadow: 0 0 5px 2.5px rgba(255,160,160,1.0), 0px 0px 1px 2px rgba(0,0,0,0.5);
     border: none;
 }
@@ -27,20 +27,22 @@ table.eliom-form {
      padding: 0;
      border: none;
 }
-eliom-form tr {
+.eliom-form tr {
 }
-eliom-form td {
+.eliom-form td {
      border: none;
      padding: 2px;
      margin: 0;
      border-bottom: 1px solid rgba(0,0,0,0.2);
 }
-
+table.eliom-form-record > tr > .eliom-form-label {
+    display: block;
+}
 tr.eliom-form:last-child > td {
      border-bottom: none;
      padding: 0px;
 }
-table.eliom-form.outmost > tr.eliom-form:first-child > td {
+table.eliom-form-outmost > tr.eliom-form:first-child > td {
      border-top: 1px solid rgba(0,0,0,0.2);
      padding: 2px;
 }
@@ -53,6 +55,6 @@ table.eliom-form.outmost > tr.eliom-form:first-child > td {
     content: "!";
 }
 
-__eliom__form__.eliom-form-option > div {
+.eliom-form-option-content {
     display: inline-block;
 }
