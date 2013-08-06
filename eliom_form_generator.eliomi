@@ -1,9 +1,20 @@
 {shared{
 
+  type 'a config = {
+    value : [ `Default of 'a | `Constant of 'a ] option;
+    label : string option;
+    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list;
+  }
+
+  type ('w, 'a) pathed_config =
+    | Pathed_config : ('w, 'a, _, 'c) Deriving_Typerepr.p * 'c config -> ('w, 'a) pathed_config
+
+  val (-->) : ('w, 'a, _, 'c) Deriving_Typerepr.p -> 'c config -> ('w, 'a) pathed_config
+
   (** {1 Generate Eliom form content from runtime type representation} *)
   val content :
     'a Deriving_Typerepr.t ->
-    ?value:'a ->
+    ?configs:((_, 'a) pathed_config list) ->
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name ->
     Html5_types.form_content Eliom_content.Html5.F.elt
 

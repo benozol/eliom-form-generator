@@ -9,37 +9,53 @@
   open Printf
   type 'a elt = 'a Eliom_content.Html5.elt
 
-  external (@) : ('a -> 'b) -> 'a -> 'b = "%apply"
   external identity : 'a -> 'a = "%identity"
-  let (-|) f g x = f (g x)
-  let (|-) f g x = g (f x)
+  external (@) : ('a -> 'b) -> 'a -> 'b = "%apply"
   let (@@) = List.append
+  let (|-) f g x = g (f x)
+  let (-|) f g x = f (g x)
+  let const x _ = x
   let flip f x y = f y x
   let flip2 f x y z = f z x y
-  let cons_if p x xs =
-    if p x then x :: xs else xs
-  let before f x = f x; x
+  module List = struct
+    include List
+    let cons x xs = x :: xs
+    let index_of xs x =
+      let rec aux ix = function
+        | [] -> raise Not_found
+        | x' :: _ when x = x' -> ix
+        | _ :: xs -> aux (succ ix) xs
+      in
+      aux 0 xs
+  end
   module Option = struct
-    let map f = function
-      | None -> None
-      | Some x -> Some (f x)
-    let get default = function
-      | None -> default
+    let default_delayed f = function
       | Some x -> x
-    let get' f = function
       | None -> f ()
-      | Some x -> x
-    let bind opt f =
-      match opt with
-      | Some x -> f x
+    let map f = function
+      | Some x -> Some (f x)
       | None -> None
-    let from_list = function
+    let bind x f =
+      match x with
+        | Some x -> f x
+        | None -> None
+    let default x = function
+      | Some x -> x
+      | None -> x
+    let is_some x = x <> None
+    let of_list = function
       | [] -> None
       | x :: _ -> Some x
-    let iter f = function
-      | None -> ()
+    let may f = function
       | Some x -> f x
+      | None -> ()
   end
+  let cons_if p x =
+    if p x
+    then List.cons x
+    else identity
+  let before f x = f x; x
+
 }}
 {client{
   let trace = Eliom_lib.trace
@@ -133,7 +149,7 @@
   let set_required node is_required =
     let open Dom_html in
     match
-      Option.get' (fun () -> Eliom_lib.error_any node "is_required") @
+      Option.default_delayed (fun () -> Eliom_lib.error_any node "is_required") @
         control_element node
     with
       | `Input input -> input ## required <- Js.bool is_required
@@ -209,7 +225,7 @@
       trace_any node "querySelector: %s" selector;
       let node = (node :> Dom_html.element Js.t) in
       let nodes = Dom.list_of_nodeList (node ## querySelectorAll (Js.string selector)) in
-      Option.from_list  @
+      Option.of_list @
         flip List.filter nodes @ fun node' ->
           not @ List.exists not_between @
             path ~inclusive_from:false ~inclusive_to:false
@@ -230,7 +246,7 @@
     if not @ has_class form option_class then
       Eliom_lib.error_any form "option_selector: not an option";
     let input =
-      Option.get' (fun () -> Eliom_lib.error_any form "Generate_form.option_selector: No selector") @
+      Option.default_delayed (fun () -> Eliom_lib.error_any form "Generate_form.option_selector: No selector") @
         querySelector ~not_between:(flip has_class form_class) form ".%s" option_selector_class
     in
     Js.Opt.get (Dom_html.CoerceTo.input input)
@@ -240,7 +256,7 @@
     trace_any form "option_content";
     if not @ has_class form option_class then
       Eliom_lib.error_any form "option_content: not an option";
-    Option.get' (fun () -> Eliom_lib.error_any form "Generate_form.option_selector: No content") @
+    Option.default_delayed (fun () -> Eliom_lib.error_any form "Generate_form.option_selector: No content") @
       querySelector ~not_between:(flip has_class form_class) form ".%s" option_content_class
 
   let sum_selector form =
@@ -248,7 +264,7 @@
     if not @ has_class form sum_class then
       Eliom_lib.error_any form "sum_selector: not a sum";
     let select =
-      Option.get' (fun () -> Eliom_lib.error_any form "Generate_form.sum_selector: No selector") @
+      Option.default_delayed (fun () -> Eliom_lib.error_any form "Generate_form.sum_selector: No selector") @
         querySelector ~not_between:(flip has_class form_class) form ".%s" sum_selector_class
     in
     Js.Opt.get (Dom_html.CoerceTo.select select)
@@ -258,7 +274,7 @@
     trace_any form "sum_case %s" case;
     if not @ has_class form sum_class then
       Eliom_lib.error_any form "sum_case: not a sum";
-    Option.get' (fun () -> Eliom_lib.error_any form "Generate_form.sum_selector: No case %s" case) @
+    Option.default_delayed (fun () -> Eliom_lib.error_any form "Generate_form.sum_selector: No case %s" case) @
       querySelector ~not_between:(flip has_class form_class) form ".%s" (sum_case_marker_class case)
 
   let sum_cases form =
@@ -341,7 +357,7 @@
     if not @ has_class node sum_selector_class then
       Eliom_lib.error_any node "is_required_sum_selector";
     let form =
-      Option.get' (fun () -> Eliom_lib.error_any node "is_required_sum_selector: not within generated form") @
+      Option.default_delayed (fun () -> Eliom_lib.error_any node "is_required_sum_selector: not within generated form") @
         parent_with_class form_class node
     in
     is_required_form form
@@ -406,9 +422,9 @@
           Eliom_lib.error_any node "data_from_form: %s not atomic" name;
         Js.to_string @
           let control =
-            Option.get' (fun () -> assert false) @
+            Option.default_delayed (fun () -> assert false) @
               control_element @
-                Option.get' (fun () -> Eliom_lib.error_any node "data_from_form: atomic without control") @
+                Option.default_delayed (fun () -> Eliom_lib.error_any node "data_from_form: atomic without control") @
                   querySelector node "input, textarea, select"
           in
           match control with
@@ -508,7 +524,7 @@
             Eliom_lib.error_any node "data_from_form: not record";
           let field_contents =
             flip List.map fields @ fun (name, _) ->
-              Option.get' (fun () -> Eliom_lib.error_any node "data_from_form: no field content for %S" name) @
+              Option.default_delayed (fun () -> Eliom_lib.error_any node "data_from_form: no field content for %S" name) @
                 querySelector ~not_between:(flip has_class form_class)
                   node ".%s > *" (record_field_marker_class name)
           in
@@ -535,7 +551,7 @@
     match any_t with
       | Any_t t ->
         let content =
-          flip Option.get' (querySelector form ".%s" form_outmost_class) @
+          flip Option.default_delayed (querySelector form ".%s" form_outmost_class) @
             fun () -> Eliom_lib.error_any form "submit_for: No outmost form"
         in
         let value = data_from_form (content :> Dom.node Js.t) t in
@@ -558,9 +574,10 @@
         ignore @ form' ## appendChild (Html5.To_dom.of_node input);
         ignore @ form' ## onsubmit <- Eliom_client.form_handler;
         form' ## submit ()
-
-  let aux_list_item_ref : (string -> Deriving_Typerepr.any_t -> Html5_types.li elt) ref =
-    ref @ fun _ _ -> failwith "aux_list_item_ref"
+ }}
+{shared{
+  let aux_list_item_ref : (int -> string -> Deriving_Typerepr.any_t -> Html5_types.li elt) ref =
+    ref @ fun _ _ _ -> failwith "aux_list_item_ref"
 }}
 
 {shared{
@@ -568,26 +585,137 @@
   open Html5.F
   open Deriving_Typerepr
 
-  type any_t_opt_value =
-    | Any_t_opt_value : 'a t * 'a option -> any_t_opt_value
+  type 'a any_field_opt_value =
+    | Any_field_opt_value : ('a, 'b) field * 'b option -> 'a any_field_opt_value
 
-  let rec aux_form_tuple : 'a . ?a_local:_ -> ?value:'a -> string -> 'a tuple -> form_content elt =
-    fun ?(a_local=[]) ?value name { components } ->
-      Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a_local) @
+  module Value = struct
+    type 'a t = [ `Default of 'a | `Constant of 'a ]
+    let kind = function
+      | `Default _ -> fun x -> `Default x
+      | `Constant _ -> fun x -> `Constant x
+    let get = function
+      | `Default x -> x
+      | `Constant x -> x
+    let map : ('a -> 'b) -> 'a t -> 'b t =
+      fun f v ->
+        kind v @ f @ get v
+  end
+
+  type 'a config = {
+    value : 'a Value.t option;
+    label : string option;
+    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list;
+  }
+  let config_zero = { value = None ; label = None ; a = [] }
+  let config_plus c1 c2 =
+    { value = if Option.is_some c1.value then c1.value else c2.value ;
+      label = if Option.is_some c1.label then c1.label else c2.label ;
+      a = List.append c1.a c2.a }
+
+  type ('w, 'a) any_path = Any_path : ('w, 'a, _, _) p -> ('w, 'a) any_path
+  type any_config = Any_config : 'c config -> any_config
+
+  type ('w, 'a) config_merger = {
+    merger : 'b 'c . ('w, 'a, 'b, 'c) p -> 'c config option -> 'c config option -> 'c config option
+  }
+  module Configs : sig
+    type ('w, 'a) configs
+    val from_list : (('w, 'a) any_path * any_config) list -> ('w, 'a) configs
+    val add : ('w, 'a, _, 'c) p -> 'c config -> ('w, 'a) configs -> ('w, 'a) configs
+    val find : ('w, 'a, _, 'c) p -> ('w, 'a) configs -> 'c config
+    val merge : ('w, 'a) config_merger -> ('w, 'a) configs -> ('w, 'a) configs -> ('w, 'a) configs
+  end = struct
+    type ('w, 'a) configs = (('w, 'a) any_path * any_config) list
+    let from_list li = li
+    let find (type c) (p : (_, _, _, c) p) cs =
+      try
+        let Any_config config = List.assoc (Any_path p) cs in
+        (Obj.magic config : c config)
+      with Not_found -> config_zero
+    let add p c cs =
+      let c0 = find p cs in
+      let c = config_plus c c0 in
+      (Any_path p, Any_config c) :: List.remove_assoc (Any_path p) cs
+    let merge (type w) (type a) merger cs1 cs2 =
+      let
+        module Map = struct
+          include Map.Make
+            (struct
+              type t = (w, a) any_path
+              let compare = Pervasives.compare
+             end)
+          let from_list li =
+            List.fold_right (fun (x, y) -> add x y) li empty
+        end
+      in
+      let cs1 = Map.from_list cs1 in
+      let cs2 = Map.from_list cs2 in
+      let merger (type c) (Any_path path) c1 c2 =
+        let path = (Obj.magic path : (_, _, _, c) p) in
+        let force (Any_config c) = (Obj.magic c : c config) in
+        Option.map (fun c -> Any_config c) @
+          merger.merger path (Option.map force c1) (Option.map force c2)
+      in
+      Map.bindings @ Map.merge merger cs1 cs2
+  end
+
+  type ('w, 'a) configs = ('w, 'a) Configs.configs
+
+  let paths : type w a . a -> a t -> (w, a) any_path list =
+    fun value t ->
+      let folder : type w c b . (w, a) any_path list -> c -> c t -> (w, a, b, c) p -> (w, a) any_path list =
+        fun sofar _ _ path ->
+          Any_path path :: sofar
+      in
+      fold { folder } [] value t
+
+  let from_value : type w a b c . (w, a, b, c) p -> c Value.t -> c t -> (w, a) configs =
+    fun original_path value t ->
+      let folder configs (Any_path path) =
+        Option.default configs @
+          flip Option.map (get (Value.get value) path) @ fun value' ->
+            let config = { config_zero with value = Some (Value.kind value value') } in
+            let path = Deriving_Typerepr.compose original_path path in
+            Configs.add path config configs
+      in
+      List.fold_left folder (Configs.from_list []) @ paths (Value.get value) t
+
+  let update_configs_with_value : type w a b c . (w, a) configs -> (w, a, b, c) p -> c t -> c Value.t option -> (w, a) configs =
+    fun configs path t value ->
+      let merger _ config update =
+        match config, update with
+          | Some config, Some update ->
+            Some (config_plus update config)
+          | None, only
+          | only, None -> only
+      in
+      Option.default configs @
+        flip Option.map value @ fun value ->
+          Configs.merge { merger } configs @
+            from_value path value t
+
+  let rec aux_form_tuple : type w a b c . (w, a) configs -> (w, a, b, c) p -> string -> c tuple -> form_content elt =
+    fun configs path name { components } ->
+      let { a; _ } = Configs.find path configs in
+      Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a) @
         flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
-          let value = Option.map (get_tuple_component component) value in
-          aux_form ?value name t
+          let path = Tuple_component (component, path) in
+          aux_form configs path name t
 
-  and aux_form_sum  : 'a . ?a_local:_ -> ?value:'a -> string -> 'a sum -> form_content elt =
-    fun ?(a_local=[]) ?value name { summands } ->
+  and aux_form_sum  : type w a b c . (w, a) configs -> (w, a, b, c) p -> string -> c sum -> form_content elt =
+    fun configs path name { summands } ->
+      let { value; a; _ } = Configs.find path configs in
       let selector =
         let a = [ a_class [ sum_selector_class ] ] in
         let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
         let summands =
           flip List.map summands @ fun (summand_name, Any_summand summand) ->
-            let sub_value = flip Option.map value @ get_sum_case_by_summand summand in
-
-            let selected = sub_value <> None in
+            let value = flip Option.map value (get_sum_case_by_summand summand -| Value.get) in
+            let selected =
+              Option.default false @
+                Option.map (Option.default false) @
+                  Option.map (Option.map (const true)) value
+            in
             Html5.D.Option ([], summand_name, Some (pcdata summand_name), selected)
         in
         Html5.D.raw_select ~a ~name null summands
@@ -596,15 +724,27 @@
         div ~a:[a_class [sum_content_class]] @
           flip List.map summands @ fun (summand_name, Any_summand summand) ->
             div ~a:[a_class [sum_case_class; sum_case_marker_class summand_name]] @
-              let value = Option.bind value (get_sum_case_by_summand summand) in
+              let value =
+                Option.bind value @ fun value ->
+                  match get_sum_case_by_summand summand (Value.get value) with
+                    | None -> None
+                    | Some value' -> Some (Value.kind value value')
+              in
               match summand with
                 | Summand_nullary _ -> []
                 | Summand_unary unary_summand ->
                   let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
-                  [ aux_form ?value name t ]
+                  let path = Case_unary (unary_summand, path) in
+                  let configs = update_configs_with_value configs path t value in
+                  [ aux_form configs path name t ]
                 | Summand_nary nary_summand ->
-                  let (_, tuple) = (nary_summand : (_, _) nary_summand :> _ * _) in
-                  [ aux_form_tuple ?value name tuple ]
+                  let (_, { components }) = (nary_summand : (_, _) nary_summand :> _ * _) in
+                  [ Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a) @
+                      flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
+                        let value = flip Option.map value @ Value.map @ get_tuple_component component in
+                        let path = Case_nary (component, nary_summand, path) in
+                        let configs = update_configs_with_value configs path t value in
+                        aux_form configs path name t ]
       in
       ignore {unit{
         Lwt.async @ fun () ->
@@ -616,24 +756,18 @@
                 | Some outmost -> reset_required outmost
                 | None -> failwith "Generate_form: no outmost"
       }};
-      Html5.D.div ~a:(a_class [form_class; sum_class] :: a_local)
+      Html5.D.div ~a:(a_class [form_class; sum_class] :: a)
         [span [selector; marker]; content ]
 
-  and aux_form_record : 'a . ?a_local:_ -> ?value:'a -> string -> 'a record -> form_content elt =
-    fun ?(a_local=[]) ?value name ({ fields } as record) ->
-      let values =
-        match value with
-          | None ->
-            flip List.map fields @ fun (field_name, Any_field (Field (_, t))) ->
-              field_name, Any_t_opt_value (t, None)
-          | Some value ->
-            flip List.map (get_record_fields record value) @ function
-              | field_name, Dyn (t, sub_value) ->
-                field_name, Any_t_opt_value (t, Some sub_value)
-      in
+  and aux_form_record : type w a b c . (w, a) configs -> (w, a, b, c) p -> string -> c record -> form_content elt =
+    fun configs path name { fields } ->
+      let { value ; a ; _ } = Configs.find path configs in
       let rows =
-        flip List.map values @ fun (field_name, (Any_t_opt_value (t, value))) ->
-          let content = aux_form ?value name t in
+        flip List.map fields @ fun (field_name, Any_field (Field (_, t) as field)) ->
+          let value = flip Option.map value @ Value.map @ get_record_field field in
+          let path = Record_field (field, path) in
+          let configs = update_configs_with_value configs path t value in
+          let content = aux_form configs path name t in
           tr [
             td ~a:[a_class [label_class]]
               [pcdata field_name];
@@ -641,11 +775,11 @@
               [ content ];
           ]
       in
-      Html5.D.table ~a:(a_class[form_class; record_class] :: a_local)
+      Html5.D.table ~a:(a_class[form_class; record_class] :: a)
         (List.hd rows) (List.tl rows)
 
-  and aux_list_item : 'a . ?value:'a -> string -> 'a Deriving_Typerepr.t -> Html5_types.li elt =
-    fun (type a) ?(value:a option) name (t : a t) ->
+  and aux_list_item : type w a b c . (w, a) configs -> (w, a, c list, c) p -> int -> string -> c Deriving_Typerepr.t -> Html5_types.li elt =
+    fun configs path _ix name t ->
       let remove =
         Html5.D.Raw.a ~a:[a_class [button_remove_class]] [
           span ~a:[a_class [label_class]] [pcdata "remove"];
@@ -653,8 +787,11 @@
         ]
       in
       let item =
-        Html5.D.li ~a:[a_class [list_item_class]] [
-          aux_form ?value name t;
+        let { value ; a ; _ } = Configs.find path configs in
+        let configs = update_configs_with_value configs path t value in
+        let a = a_class [list_item_class] :: a in
+        Html5.D.li ~a [
+          aux_form configs path name t;
           remove
         ]
       in
@@ -665,7 +802,7 @@
             let item = Html5.To_dom.of_li %item in
             Lwt_js_events.clicks remove @ fun _ _ ->
               let _outmost =
-                Option.get' (fun () -> Eliom_lib.error_any item "No outmost") @
+                Option.default_delayed (fun () -> Eliom_lib.error_any item "No outmost") @
                   parent_with_class form_outmost_class item
               in
               let parent = Js.Opt.get (item ## parentNode) @ fun () -> failwith "No parent" in
@@ -674,42 +811,54 @@
       }};
       item
 
-  and aux_form : 'a . ?is_outmost:bool -> ?value:'a -> string -> 'a t -> form_content elt =
-    fun (type a) ?(is_outmost=false) ?(value: a option) name (t : a t) ->
-      let a_local =
-        if is_outmost then
-          Some [ a_class [ form_outmost_class ] ]
-        else None
-      in
-      let a_atomic = a_class [form_class; atomic_class] :: Option.get [] a_local in
-      match t with
-        | Atomic Unit -> Html5.D.span ~a:a_atomic []
-        | Atomic String ->
-          marked ~a:a_atomic @ raw_input ~input_type:`Text ?value ~name ()
-        | Atomic Int ->
+  and aux_atomic : type w a b c . (w, a) configs -> (w, a, b, c) p -> string -> c atomic -> form_content elt =
+    fun configs path name at ->
+      let { value ; a ; _ } = Configs.find path configs in
+      let a = a_class [form_class; atomic_class] :: a in
+      match at with
+        | Unit -> Html5.D.span ~a []
+        | String ->
+          let value = Option.map Value.get value in
+          marked ~a @ raw_input ~input_type:`Text ?value ~name ()
+        | Int ->
+          let value = Option.map Value.get value in
           let value = Option.map string_of_int value in
-          marked ~a:a_atomic @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
-        | Atomic Int32 ->
+          marked ~a @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
+        | Int32 ->
+          let value = Option.map Value.get value in
           let value = Option.map Int32.to_string value in
-          marked ~a:a_atomic @ raw_input~a:[a_step @ `Step 1.0]  ~input_type:`Number ?value ~name ()
-        | Atomic Int64 ->
+          marked ~a @ raw_input~a:[a_step @ `Step 1.0]  ~input_type:`Number ?value ~name ()
+        | Int64 ->
+          let value = Option.map Value.get value in
           let value = Option.map Int64.to_string value in
-          marked ~a:a_atomic @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
-        | Atomic Float ->
+          marked ~a @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
+        | Float ->
+          let value = Option.map Value.get value in
           let value = Option.map string_of_float value in
-          marked ~a:a_atomic @ raw_input ~a:[a_step `Any] ~input_type:`Number ?value ~name ()
-        | Atomic Bool ->
-          marked ~a:a_atomic @ raw_checkbox ?checked:value ~name ~value:"" ()
-        | Option t ->
-          aux_form_option ?value ?a_local name t
-        | List t ->
-          aux_form_list ?value ?a_local name t
+          marked ~a @ raw_input ~a:[a_step `Any] ~input_type:`Number ?value ~name ()
+        | Bool ->
+          let value = Option.map Value.get value in
+          marked ~a @ raw_checkbox ?checked:value ~name ~value:"" ()
+
+  and aux_form : type w a b c . ?is_outmost:bool -> (w, a) configs -> (w, a, b, c) p -> string -> c t -> form_content elt =
+    fun ?(is_outmost=false) configs path name t ->
+      let configs =
+        if is_outmost then
+          Configs.add root { config_zero with a = [ a_class [form_outmost_class] ] } configs
+        else configs
+      in
+      match t with
+        | Atomic atomic -> aux_atomic configs path name atomic
         | Tuple tuple ->
-          aux_form_tuple ?a_local ?value name tuple
+          aux_form_tuple configs path name tuple
         | Sum sum ->
-          aux_form_sum ?a_local ?value name sum
+          aux_form_sum configs path name sum
         | Record record ->
-          aux_form_record ?a_local ?value name record
+          aux_form_record configs path name record
+        | Option t ->
+          aux_form_option configs path name t
+        | List t ->
+          aux_form_list configs path name t
         | Array _ ->
           failwith "Generate_form.form: not for array"
         | Function _ ->
@@ -717,18 +866,20 @@
         | Ref _ ->
           failwith "Generate_form.form: not for refs"
 
-  and aux_form_option : 'a . ?value:'a option -> ?a_local:_  -> string -> 'a t -> form_content elt =
+  and aux_form_option : type w a b c . (w, a) configs -> (w, a, b, c option) p -> string -> c t -> form_content elt =
     let open Html5.F in
-    fun ?value ?(a_local=[]) name t ->
+    fun configs path name t ->
+      let { value ; a ;_ } = Configs.find path configs in
       let selector =
-        let checked = Option.map ((<>) None) value in
+        let checked = Option.map ((<>) None) @ Option.map Value.get value in
         let a = [a_class[option_selector_class]] in
         Html5.D.raw_checkbox ~a ?checked ~name:"" ~value:"" ()
       in
       let content =
-        let value = Option.bind value identity in
+        (* let value = Option.bind value identity in *)
+        let path = Option_some path in
         let a = [a_class [option_content_class]] in
-        div ~a [ aux_form ?value name t ]
+        div ~a [ aux_form configs path name t ]
       in
       ignore {unit{
         onload_or_now @ fun () ->
@@ -740,11 +891,12 @@
                   | Some outmost -> reset_required outmost
                   | None -> failwith "Generate_form: no outmost"
       }};
-      let a = a_class [form_class; option_class] :: (a_local :> Html5_types.div_attrib attrib list) in
+      let a = a_class [form_class; option_class] :: a in
       Html5.D.div ~a [ marked selector; content]
 
-  and aux_form_list : 'a . ?value:'a list -> ?a_local:_  -> name -> 'a t -> form_content elt =
-    fun (type a) ?(value : a list option) ?(a_local=[]) name (t : a t) ->
+  and aux_form_list : type w a b c . (w, a) configs -> (w, a, b, c list) p -> name -> c t -> form_content elt =
+    fun configs path name t ->
+      let { value ; a ; _ } = Configs.find path configs in
       let add =
         Html5.D.Raw.a ~a:[a_class [button_add_class]] [
           span ~a:[a_class [label_class]] [pcdata "add"];
@@ -753,15 +905,16 @@
       in
       let add_li = Html5.D.li [ add ] in
       let content =
-        Html5.D.ul @
-          (match value with
-            | None ->
-              []
-            | Some values ->
-              flip List.map values @
-                fun value ->
-                  aux_list_item ~value name t) @@
-          [ add_li ]
+        let items =
+          Option.default [] @
+            flip Option.map value @ fun list ->
+              flip List.mapi (Value.get list) @ fun ix value ->
+                let path = List_item (ix, path) in
+                let value = Some (Value.kind list value) in
+                let configs = update_configs_with_value configs path t value in
+                aux_list_item configs path ix name t
+        in
+        Html5.D.ul @ items @@ [ add_li ]
       in
       ignore {unit{
         onload_or_now @ fun () ->
@@ -769,25 +922,35 @@
             let add = Html5.To_dom.of_element %add in
             let content = Html5.To_dom.of_element %content in
             Lwt_js_events.clicks add @ fun _ _ ->
-              let item = !aux_list_item_ref %name %(Any_t t) in
+              let ix = pred @ content ## childNodes ## length in
+              let item = !aux_list_item_ref ix %name %(Any_t t) in
               Html5.Manip.appendChild ~before:%add_li %content item;
               reset_required @
-                Option.get' (fun () -> Eliom_lib.error_any item "No outmost'") @
-                parent_with_class form_outmost_class content;
+                Option.default_delayed (fun () -> Eliom_lib.error_any item "No outmost'") @
+                  parent_with_class form_outmost_class content;
               Lwt.return ()
       }};
-      let a = a_class [form_class; list_class] :: (a_local :> Html5_types.div_attrib attrib list) in
+      let a = a_class [form_class; list_class] :: a in
       Html5.D.div ~a [content]
 
-  let content : type a . a t -> ?value:a -> [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
-    fun t ?value name ->
+  type ('w, 'a) pathed_config =
+    | Pathed_config : ('w, 'a, _, 'c) p * 'c config -> ('w, 'a) pathed_config
+
+  let content : type w a . a t -> ?configs:(w, a) pathed_config list -> [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
+    fun t ?(configs=[]) name ->
+      let configs =
+        Configs.from_list @
+          flip List.map configs @
+            fun (Pathed_config (p, c)) ->
+              Any_path p, Any_config c
+      in
       let name = (Obj.magic name : string) in
-      let content = aux_form ~is_outmost:true ?value name t in
+      let content = aux_form ~is_outmost:true configs Root name t in
       ignore {unit{
         onload_or_now @ fun () ->
           let content = Html5.To_dom.of_element %content in
           reset_required content;
-          flip Option.iter (parent Dom_html.(tagged |- function Form _ -> true | _ -> false) content) @
+          flip Option.may (parent Dom_html.(tagged |- function Form _ -> true | _ -> false) content) @
             fun form ->
               let form =
                 Js.Opt.get (Dom_html.CoerceTo.form form)
@@ -802,9 +965,11 @@
                 Js._false
       }};
       content
+
+  let (-->) p c = Pathed_config (p, c)
 }}
 
 {client{
   let () =
-    aux_list_item_ref := fun name (Any_t t) -> aux_list_item ?value:None name t
+    aux_list_item_ref := fun ix name (Any_t t) -> aux_list_item (Configs.from_list []) Root ix name t
 }}
