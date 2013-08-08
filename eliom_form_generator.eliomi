@@ -1,22 +1,35 @@
 {shared{
 
-  type 'a config = {
-    value : [ `Default of 'a | `Constant of 'a ] option;
-    label : string option;
-    a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list;
-  }
-
-  type ('w, 'a) pathed_config =
-    | Pathed_config : ('w, 'a, _, 'c) Deriving_Typerepr.p * 'c config -> ('w, 'a) pathed_config
-
-  val (-->) : ('w, 'a, _, 'c) Deriving_Typerepr.p -> 'c config -> ('w, 'a) pathed_config
+  type 'a pathed_config
 
   (** {1 Generate Eliom form content from runtime type representation} *)
   val content :
     'a Deriving_Typerepr.t ->
-    ?configs:((_, 'a) pathed_config list) ->
+    ?configs:('a pathed_config list) ->
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name ->
     Html5_types.form_content Eliom_content.Html5.F.elt
+
+  type 'a config
+
+  (** Auxiliary function for the construction of the [configs] parameter *)
+  module Pathed_config : sig
+
+    val default : 'a -> [> `Default of 'a ]
+    val constant : 'a -> [> `Constant of 'a ]
+    val config : ?value:[ `Default of 'a | `Constant of 'a ] -> ?label:string ->
+      ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list -> unit -> 'a config
+
+    open Deriving_Typerepr
+    val (-->) : ('a, 'b) p -> 'b config -> 'a pathed_config
+    val (/) : ('a, 'b) p -> (('a, 'b) p -> ('a, 'c) p) -> ('a, 'c) p
+    val root : ('a, 'a) p
+    val list_item : int -> ('a, 'b list) p -> ('a, 'b) p
+    val some : ('a, 'b option) p -> ('a, 'b) p
+    val unary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+    val nary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+    val component : 'b t -> int -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+    val field : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+  end
 
   (** Name of the installed CSS file *)
   val css_filename : string
