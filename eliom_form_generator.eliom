@@ -982,6 +982,7 @@
     let default x = `Default x
     let root = Root
     let component = the_component
+    let nullary_case = the_nullary_case
     let unary_case = the_unary_case
     let nary_case = the_nary_case
     let field = the_field

@@ -25,6 +25,7 @@
     val root : ('a, 'a) p
     val list_item : int -> ('a, 'b list) p -> ('a, 'b) p
     val some : ('a, 'b option) p -> ('a, 'b) p
+    val nullary_case : 'b t -> string -> ('a, 'b) p -> ('a, unit) p
     val unary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
     val nary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
     val component : 'b t -> int -> 'c t -> ('a, 'b) p -> ('a, 'c) p
