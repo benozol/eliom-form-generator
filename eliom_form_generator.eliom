@@ -51,6 +51,10 @@
       | None -> ()
     let plus o1 o2 =
       if is_some o1 then o1 else o2
+    let merge f o1 o2 =
+      match o1, o2 with
+        | Some x1, Some x2 -> f x1 x2
+        | None, only | only, None -> only
   end
   let cons_if p x =
     if p x
@@ -406,14 +410,14 @@
       in
       let open Deriving_Typerepr in
       let aux_tuple : 'a . Dom_html.element Js.t -> 'a tuple -> 'a =
-        fun (type a) node { components } ->
+        fun (type a) node tuple ->
           let category = categorize_form node in
           if category <> `Tuple then
             Eliom_lib.error_any node "data_from_form: not tuple (composed)";
           let component_contents =
             Dom.list_of_nodeList (node ## childNodes)
           in
-          create_tuple components
+          create_tuple tuple
             { create_tuple_component =
                 fun (Component (t, ix)) ->
                   data_from_form (List.nth component_contents ix) t }
@@ -601,6 +605,11 @@
     let map : ('a -> 'b) -> 'a t -> 'b t =
       fun f v ->
         kind v @ f @ get v
+    let put_over_option : 'a option t -> 'a t option =
+      fun v ->
+        match get v with
+          | Some a -> Some (kind v a)
+          | None -> None
   end
 
   type 'a config = {
@@ -608,32 +617,35 @@
     label : string option;
     a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list;
   }
-  let config_zero = { value = None ; label = None ; a = [] }
-  let config_plus c1 c2 =
-    { value = Option.plus c1.value c2.value ;
-      label = Option.plus c1.label c2.label ;
-      a = List.append c1.a c2.a }
+  module Config = struct
+    let zero = { value = None ; label = None ; a = [] }
+    let plus c1 c2 =
+      { value = Option.plus c1.value c2.value ;
+        label = Option.plus c1.label c2.label ;
+        a = List.append c1.a c2.a }
+    let value value = { zero with value }
+  end
 
   type 'a any_path = Any_path : ('a, _) p -> 'a any_path
   type any_config = Any_config : 'c config -> any_config
 
   module Configs : sig
     type 'a configs
-    val from_list : ('a any_path * any_config) list -> 'a configs
+    val zero : 'a configs
     val add : ('a, 'b) p -> 'b config -> 'a configs -> 'a configs
     val find : ('a, 'b) p -> 'a configs -> 'b config
     val plus : 'a configs -> 'a configs -> 'a configs
   end = struct
     type 'a configs = ('a any_path * any_config) list
-    let from_list li = li
+    let zero = []
     let find (type b) (p : (_, b) p) cs =
       try
         let Any_config config = List.assoc (Any_path p) cs in
         (Obj.magic config : b config)
-      with Not_found -> config_zero
+      with Not_found -> Config.zero
     let add p c cs =
       let c0 = find p cs in
-      let c = config_plus c c0 in
+      let c = Config.plus c c0 in
       (Any_path p, Any_config c) :: List.remove_assoc (Any_path p) cs
     let plus (type w) (type a) cs1 cs2 =
       let
@@ -653,11 +665,15 @@
         let force (Any_config c) = (Obj.magic c : b config) in
         Option.map (fun c -> Any_config c) @
           match Option.map force c1, Option.map force c2 with
-            | Some c1, Some c2 -> Some (config_plus c1 c2)
+            | Some c1, Some c2 -> Some (Config.plus c1 c2)
             | None, only | only, None -> only
       in
       Map.bindings @ Map.merge merger cs1 cs2
   end
+
+  let configs_find_with_value configs path value =
+    let c = Configs.find configs path in
+    Config.plus c @ Config.value value
 
   type 'a configs = 'a Configs.configs
 
@@ -674,42 +690,24 @@
       let folder configs (Any_path path) =
         Option.default configs @
           flip Option.map (get (Value.get value) path) @ fun value' ->
-            let config = { config_zero with value = Some (Value.kind value value') } in
+            let config = { Config.zero with value = Some (Value.kind value value') } in
             let path = Deriving_Typerepr.compose path original_path in
             Configs.add path config configs
       in
-      List.fold_left folder (Configs.from_list []) @ paths (Value.get value) t
+      List.fold_left folder Configs.zero @ paths (Value.get value) t
 
-  let update_configs_with_value : type a b. a configs -> (a, b) p -> b t -> b Value.t option -> a configs =
-    fun configs path t value ->
-      Option.default configs @
-        flip Option.map value @ fun value ->
-          Configs.plus configs @
-            from_value path value t
-
-  let update_configs_with_tuple : type a b . a configs -> (a, b) p -> b tuple -> b Value.t option -> a configs =
-     fun configs path { components } value ->
-       Option.default configs @
-         flip Option.map value @ fun value ->
-           flip2 List.fold_left configs components @
-             fun configs (Any_component (Component (t, _) as component)) ->
-               let value = flip Value.map value @ get_tuple_component component in
-               let path = Tuple_component (component, path) in
-               update_configs_with_value configs path t (Some value)
-
-  let rec aux_form_tuple : type a b . a configs -> (a, b) p -> string -> b tuple -> form_content elt =
-    fun configs path name { components } ->
-      let { value; a; _ } = Configs.find path configs in
+  let rec aux_form_tuple : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b tuple -> form_content elt =
+    fun configs value path name { components } ->
+      let { value ; a ; _ } = configs_find_with_value path configs value in
       Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a) @
         flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
           let value = flip Option.map value (Value.map @ get_tuple_component component) in
           let path = Tuple_component (component, path) in
-          let configs = update_configs_with_value configs path t value in
-          aux_form configs path name t
+          aux_form configs value path name t
 
-  and aux_form_sum  : type a b . a configs -> (a, b) p -> string -> b sum -> form_content elt =
-    fun configs path name { summands } ->
-      let { value; a; _ } = Configs.find path configs in
+  and aux_form_sum  : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b sum -> form_content elt =
+    fun configs value path name { summands } ->
+      let { value ; a ; _ } = configs_find_with_value path configs value in
       let selector =
         let a = [ a_class [ sum_selector_class ] ] in
         let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
@@ -721,7 +719,20 @@
                 Option.map (Option.default false) @
                   Option.map (Option.map (const true)) value
             in
-            Html5.D.Option ([], summand_name, Some (pcdata summand_name), selected)
+            let label =
+              match summand with
+                | Summand_nullary summand ->
+                  let path = Case_nullary (summand, path) in
+                  (Configs.find path configs).label
+                | Summand_unary summand ->
+                  let path = Case_unary (summand, path) in
+                  (Configs.find path configs).label
+                | Summand_nary summand ->
+                  let path = Case_nary (summand, path) in
+                  (Configs.find path configs).label
+            in
+            let label = Option.default summand_name label in
+            Html5.D.Option ([], summand_name, Some (pcdata label), selected)
         in
         Html5.D.raw_select ~a ~name null summands
       in
@@ -740,14 +751,12 @@
                 | Summand_unary unary_summand ->
                   let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
                   let path = Case_unary (unary_summand, path) in
-                  let configs = update_configs_with_value configs path t value in
-                  [ aux_form configs path name t ]
+                  [ aux_form configs value path name t ]
                 | Summand_nary nary_summand ->
-                  let (_, tuple) = (nary_summand : (_, _) nary_summand :> _ * _) in
+                  let (_, t) = (nary_summand : (_, _) nary_summand :> _ * _) in
                   let path = Case_nary (nary_summand, path) in
-                  let configs = update_configs_with_tuple configs path tuple value in
                   [ Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a)
-                      [ aux_form_tuple configs path name tuple ] ]
+                      [ aux_form_tuple configs value path name t ] ]
       in
       ignore {unit{
         Lwt.async @ fun () ->
@@ -762,18 +771,19 @@
       Html5.D.div ~a:(a_class [form_class; sum_class] :: a)
         [span [selector; marker]; content ]
 
-  and aux_form_record : type a b . a configs -> (a, b) p -> string -> b record -> form_content elt =
-    fun configs path name { fields } ->
-      let { value ; a ; _ } = Configs.find path configs in
+  and aux_form_record : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b record -> form_content elt =
+    fun configs value path name { fields } ->
+      let { value ; a ; _ } = configs_find_with_value path configs value in
       let rows =
         flip List.map fields @ fun (field_name, Any_field (Field (_, t) as field)) ->
-          let value = flip Option.map value @ Value.map @ get_record_field field in
           let path = Record_field (field, path) in
-          let configs = update_configs_with_value configs path t value in
-          let content = aux_form configs path name t in
-          tr [
+          let value = flip Option.map value @ Value.map @ get_record_field field in
+          let { a ; label ; value } = configs_find_with_value path configs value in
+          let label = Option.default field_name label in
+          let content = aux_form configs value path name t in
+          tr ~a [
             td ~a:[a_class [label_class]]
-              [pcdata field_name];
+              [pcdata label];
             td ~a:[a_class [ record_field_marker_class field_name ]]
               [ content ];
           ]
@@ -781,8 +791,8 @@
       Html5.D.table ~a:(a_class[form_class; record_class] :: a)
         (List.hd rows) (List.tl rows)
 
-  and aux_list_item : type a b . a configs -> (a, b) p -> int -> string -> b Deriving_Typerepr.t -> Html5_types.li elt =
-    fun configs path _ix name t ->
+  and aux_list_item : type a b . a configs -> b Value.t option -> (a, b) p -> int -> string -> b Deriving_Typerepr.t -> Html5_types.li elt =
+    fun configs value path _ix name t ->
       let remove =
         Html5.D.Raw.a ~a:[a_class [button_remove_class]] [
           span ~a:[a_class [label_class]] [pcdata "remove"];
@@ -790,11 +800,10 @@
         ]
       in
       let item =
-        let { value ; a ; _ } = Configs.find path configs in
-        let configs = update_configs_with_value configs path t value in
+        let { value ; a ; _ } = configs_find_with_value path configs value in
         let a = a_class [list_item_class] :: a in
         Html5.D.li ~a [
-          aux_form configs path name t;
+          aux_form configs value path name t;
           remove
         ]
       in
@@ -814,9 +823,9 @@
       }};
       item
 
-  and aux_atomic : type a b . a configs -> (a, b) p -> string -> b atomic -> form_content elt =
-    fun configs path name at ->
-      let { value ; a ; _ } = Configs.find path configs in
+  and aux_atomic : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b atomic -> form_content elt =
+    fun configs value path name at ->
+      let { value ; a ; _ } = configs_find_with_value path configs value in
       let a = a_class [form_class; atomic_class] :: a in
       match at with
         | Unit -> Html5.D.span ~a []
@@ -843,25 +852,26 @@
           let value = Option.map Value.get value in
           marked ~a @ raw_checkbox ?checked:value ~name ~value:"" ()
 
-  and aux_form : type a b . ?is_outmost:bool -> a configs -> (a, b) p -> string -> b t -> form_content elt =
-    fun ?(is_outmost=false) configs path name t ->
+  and aux_form : type a b . ?is_outmost:bool -> a configs -> b Value.t option -> (a, b) p -> string -> b t -> form_content elt =
+    fun ?(is_outmost=false) configs value path name t ->
       let configs =
         if is_outmost then
-          Configs.add Root { config_zero with a = [ a_class [form_outmost_class] ] } configs
+          Configs.add Root { Config.zero with a = [ a_class [form_outmost_class] ] } configs
         else configs
       in
       match t with
-        | Atomic atomic -> aux_atomic configs path name atomic
+        | Atomic atomic ->
+          aux_atomic configs value path name atomic
         | Tuple tuple ->
-          aux_form_tuple configs path name tuple
+          aux_form_tuple configs value path name tuple
         | Sum sum ->
-          aux_form_sum configs path name sum
+          aux_form_sum configs value path name sum
         | Record record ->
-          aux_form_record configs path name record
+          aux_form_record configs value path name record
         | Option t ->
-          aux_form_option configs path name t
+          aux_form_option configs value path name t
         | List t ->
-          aux_form_list configs path name t
+          aux_form_list configs value path name t
         | Array _ ->
           failwith "Generate_form.form: not for array"
         | Function _ ->
@@ -869,10 +879,10 @@
         | Ref _ ->
           failwith "Generate_form.form: not for refs"
 
-  and aux_form_option : type a b . a configs -> (a, b option) p -> string -> b t -> form_content elt =
+  and aux_form_option : type a b . a configs -> b option Value.t option -> (a, b option) p -> string -> b t -> form_content elt =
     let open Html5.F in
-    fun configs path name t ->
-      let { value ; a ;_ } = Configs.find path configs in
+    fun configs value path name t ->
+      let { value ; a ;_ } = configs_find_with_value path configs value in
       let selector =
         let checked = Option.map ((<>) None) @ Option.map Value.get value in
         let a = [a_class[option_selector_class]] in
@@ -880,14 +890,9 @@
       in
       let content =
         let path = Option_some path in
-        let configs =
-          Option.default configs @
-            flip Option.map value @ fun value ->
-              let value = flip Option.map (Value.get value) @ Value.kind value in
-              update_configs_with_value configs path t value
-        in
-        let a = [a_class [option_content_class]] in
-        div ~a [ aux_form configs path name t ]
+        let value = Option.bind value Value.put_over_option in
+        div ~a:[a_class [option_content_class]]
+          [ aux_form configs value path name t ]
       in
       ignore {unit{
         onload_or_now @ fun () ->
@@ -902,9 +907,9 @@
       let a = a_class [form_class; option_class] :: a in
       Html5.D.div ~a [ marked selector; content]
 
-  and aux_form_list : type a b . a configs -> (a, b list) p -> name -> b t -> form_content elt =
-    fun configs path name t ->
-      let { value ; a ; _ } = Configs.find path configs in
+  and aux_form_list : type a b . a configs -> b list Value.t option -> (a, b list) p -> name -> b t -> form_content elt =
+    fun configs value path name t ->
+      let { value ; a ; _ } = configs_find_with_value path configs value in
       let add =
         Html5.D.Raw.a ~a:[a_class [button_add_class]] [
           span ~a:[a_class [label_class]] [pcdata "add"];
@@ -919,8 +924,7 @@
               flip List.mapi (Value.get list) @ fun ix value ->
                 let path = List_item (ix, path) in
                 let value = Some (Value.kind list value) in
-                let configs = update_configs_with_value configs path t value in
-                aux_list_item configs path ix name t
+                aux_list_item configs value path ix name t
         in
         Html5.D.ul @ items @@ [ add_li ]
       in
@@ -943,17 +947,24 @@
 
   type 'a pathed_config =
     | Pathed_config : ('a, 'b) p * 'b config -> 'a pathed_config
+    | Pathed_deep_config : ('a, 'b) p * 'b pathed_config list -> 'a pathed_config
 
-  let content : type w a . a t -> ?configs:a pathed_config list -> [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
+  let rec flatten_pathed_config : type a b . (a, b) p -> b pathed_config list -> a configs -> a configs =
+    fun p pcs cs ->
+      flip2 List.fold_left cs pcs @
+        fun cs pc ->
+          match pc with
+            | Pathed_config (p', c) ->
+              Configs.add (compose p' p) c cs
+            | Pathed_deep_config (p', pcs) ->
+              flatten_pathed_config (compose p' p) pcs cs
+
+  let content : type w a . a t -> ?configs:a pathed_config list ->
+                  [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
     fun t ?(configs=[]) name ->
-      let configs =
-        Configs.from_list @
-          flip List.map configs @
-            fun (Pathed_config (p, c)) ->
-              Any_path p, Any_config c
-      in
+      let configs = flatten_pathed_config Root configs Configs.zero in
       let name = (Obj.magic name : string) in
-      let content = aux_form ~is_outmost:true configs Root name t in
+      let content = aux_form ~is_outmost:true configs None Root name t in
       ignore {unit{
         onload_or_now @ fun () ->
           let content = Html5.To_dom.of_element %content in
@@ -976,6 +987,7 @@
 
   module Pathed_config = struct
     let (-->) p c = Pathed_config (p, c)
+    let (--->) p cs = Pathed_deep_config (p, cs)
     let (/) p mk = mk p
     let config ?value ?label ?(a=[]) () = { value ; label ; a }
     let constant x = `Constant x
@@ -1156,5 +1168,7 @@
 
 {client{
   let () =
-    aux_list_item_ref := fun ix name (Any_t t) -> aux_list_item (Configs.from_list []) Root ix name t
+    aux_list_item_ref :=
+      fun ix name (Any_t t) ->
+        aux_list_item Configs.zero None Root ix name t
 }}

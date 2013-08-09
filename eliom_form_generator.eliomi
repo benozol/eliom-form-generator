@@ -20,8 +20,9 @@
       ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list -> unit -> 'a config
 
     open Deriving_Typerepr
-    val (-->) : ('a, 'b) p -> 'b config -> 'a pathed_config
     val (/) : ('a, 'b) p -> (('a, 'b) p -> ('a, 'c) p) -> ('a, 'c) p
+    val (-->) : ('a, 'b) p -> 'b config -> 'a pathed_config
+    val (--->) : ('a, 'b) p -> 'b pathed_config list -> 'a pathed_config
     val root : ('a, 'a) p
     val list_item : int -> ('a, 'b list) p -> ('a, 'b) p
     val some : ('a, 'b option) p -> ('a, 'b) p
