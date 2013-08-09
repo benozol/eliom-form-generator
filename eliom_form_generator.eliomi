@@ -57,4 +57,7 @@
   val button_add_class : string
   val button_remove_class : string
   val label_class : string
+
+  val json_of_typerepr : 'a Deriving_Typerepr.t -> 'a Deriving_Json.t
+
 }}

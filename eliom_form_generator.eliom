@@ -990,6 +990,167 @@
     let some p = Option_some p
     let content p = Ref_content p
   end
+
+  let json_of_typerepr : type a . a t -> a Deriving_Json.t =
+    let for_atomic : type a . a atomic -> (module Deriving_Json.Json with type a = a) = function
+      | Unit -> (module Deriving_Json.Json_unit)
+      | Int -> (module Deriving_Json.Json_int)
+      | Bool -> (module Deriving_Json.Json_bool)
+      | String -> (module Deriving_Json.Json_string)
+      | Float -> (module Deriving_Json.Json_float)
+      | Int32 -> (module Deriving_Json.Json_int32)
+      | Int64 -> (module Deriving_Json.Json_int64)
+    in
+    let rec aux : type a . a t -> (module Deriving_Json.Json with type a = a) = function
+      | Atomic atomic -> for_atomic atomic
+      | List t ->
+        let module Json = (val aux t) in
+        (module Deriving_Json.Json_list (Json))
+      | Option t ->
+        let module Json = (val aux t) in
+        (module Deriving_Json.Json_option (Json))
+      | Array t ->
+        let module Json = (val aux t) in
+        (module Deriving_Json.Json_array (Json))
+      | Ref t ->
+        let module Json = (val aux t) in
+        (module Deriving_Json.Json_ref (Json))
+      | Tuple ({ components } as tuple) ->
+        (module
+           Deriving_Json.Defaults
+             (struct
+               type x = a
+               type a = x
+               let write buffer value =
+                 Buffer.add_string buffer "[0";
+                 begin
+                   flip List.iter components @ fun (Any_component (Component (t, _) as component)) ->
+                     let module Json = (val aux t) in
+                     Buffer.add_char buffer ',';
+                     Json.write buffer @
+                       get_tuple_component component value
+                 end;
+                 Buffer.add_char buffer ']'
+               let read buf =
+                 let create_tuple_component =
+                   fun (type b) (Component ((t : b t), _)) ->
+                     let module Json = (val aux t) in
+                     Deriving_Json_lexer.read_comma buf;
+                     Json.read buf
+                 in
+                 Deriving_Json_lexer.read_lbracket buf;
+                 ignore (Deriving_Json_lexer.read_tag_1 0 buf);
+                 let res = create_tuple tuple { create_tuple_component } in
+                 ignore @ Deriving_Json_lexer.read_rbracket buf;
+                 res
+              end))
+      | Sum ({ summands } as sum) ->
+        (module
+           Deriving_Json.Defaults
+             (struct
+               type x = a
+               type a = x
+               let write buffer value =
+                 let _, Any_case_value (summand, value) = get_sum_case sum value in
+                 match summand with
+                   | Summand_nullary nullary ->
+                     let ix = (nullary : _ nullary_summand :> int) in
+                     Printf.bprintf buffer "%d" ix
+                   | Summand_unary unary ->
+                     let ix, t = (unary : (_, _) unary_summand :> _ * _) in
+                     let module Json = (val aux t) in
+                     Printf.bprintf buffer "[%d," ix;
+                     Json.write buffer value;
+                     Buffer.add_char buffer ']'
+                   | Summand_nary nary ->
+                     let ix, { components } = (nary : (_, _) nary_summand :> _ * _) in
+                     Printf.bprintf buffer "[%d" ix;
+                     begin
+                       flip List.iter components @ fun (Any_component component) ->
+                         let Component (t, _) = component in
+                         let module Json = (val aux t) in
+                         Buffer.add_char buffer ',';
+                         Json.write buffer @ get_tuple_component component value
+                     end;
+                     Buffer.add_char buffer ']'
+               let read buf =
+                 let is_nullary = function
+                   | _, Any_summand (Summand_nullary _) -> true
+                   | _ -> false
+                 in
+                 match Deriving_Json_lexer.read_case buf with
+                   | `Cst ix ->
+                     let _, Any_summand summand = flip List.nth ix @ List.filter is_nullary summands in
+                     begin
+                       match summand with
+                         | Summand_nullary _ as summand ->
+                           create_sum_case summand ()
+                         | _ -> assert false
+                     end
+                   | `NCst ix ->
+                     begin
+                       let _, Any_summand summand =
+                         flip List.nth ix @
+                           List.filter (not -| is_nullary) summands
+                       in
+                       match summand with
+                         | Summand_unary unary ->
+                           let _, t = (unary : (_, _) unary_summand :> _ * _) in
+                           let module Json = (val aux t) in
+                           Deriving_Json_lexer.read_comma buf;
+                           let value = Json.read buf in
+                           ignore @ Deriving_Json_lexer.read_rbracket buf;
+                           create_sum_case summand value
+                         | Summand_nary nary ->
+                           let tuple =
+                             let create_tuple_component (type b) (Component ((t : b t), _)) =
+                               let module Json = (val aux t) in
+                               Deriving_Json_lexer.read_comma buf;
+                               Json.read buf
+                             in
+                             let _, t = (nary : (_, _) nary_summand :> _ * _) in
+                             create_tuple t { create_tuple_component }
+                           in
+                           let res = create_sum_case summand tuple in
+                           ignore @ Deriving_Json_lexer.read_rbracket buf;
+                           res
+                         | Summand_nullary _ -> assert false
+                     end
+              end))
+      | Record ({ fields } as record) ->
+        (module
+           Deriving_Json.Defaults
+             (struct
+               type x = a
+               type a = x
+               let write buffer value =
+                 Buffer.add_string buffer "[0";
+                 begin
+                   flip List.iter fields @ fun (_, Any_field field) ->
+                     let Field (_, t) = field in
+                     let module Json = (val aux t) in
+                     Buffer.add_char buffer ',';
+                     Json.write buffer @ get_record_field field value
+                 end;
+                 Buffer.add_string buffer "]"
+               let read buf =
+                 let create_record_field (type  b) _ (Field (_, (t : b t))) =
+                   let module Json = (val aux t) in
+                   Deriving_Json_lexer.read_comma buf;
+                   Json.read buf
+                 in
+                 Deriving_Json_lexer.read_lbracket buf;
+                 ignore (Deriving_Json_lexer.read_tag_2 0 254 buf);
+                 let res = create_record record { create_record_field } in
+                 Deriving_Json_lexer.read_rbracket buf;
+                 res
+              end))
+      | Function _ ->
+        failwith "Eliom_form_generator.json_of_typerepr: function"
+    in
+    fun t ->
+      let module Json = (val aux t) in
+      Json.t
 }}
 
 {client{
