@@ -7,30 +7,35 @@
     'a Deriving_Typerepr.t ->
     ?configs:('a pathed_config list) ->
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name ->
-    Html5_types.form_content Eliom_content.Html5.F.elt
+    Html5_types.form_content Eliom_content.Html5.elt
 
   type 'a config
+  type 'a value
+  type 'a template
+  val string_widget :
+    (?value:[`Default of string|`Constant of string] ->
+     string Eliom_parameter.setoneradio Eliom_parameter.param_name ->
+     Html5_types.span_content Eliom_content.Html5.elt) ->
+    string template
 
   (** Auxiliary function for the construction of the [configs] parameter *)
   module Pathed_config : sig
 
-    val default : 'a -> [> `Default of 'a ]
-    val constant : 'a -> [> `Constant of 'a ]
-    val config : ?value:[ `Default of 'a | `Constant of 'a ] -> ?label:string ->
-      ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list -> unit -> 'a config
+    val default : 'a -> 'a value
+    val constant : 'a -> 'a value
+    val config :
+      ?value:'a value ->
+      ?label:string ->
+      ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list ->
+      ?template:'a template ->
+      unit -> [> `Config of 'a config ]
+    val tree : 'a pathed_config list -> [> `Tree of 'a pathed_config list ]
 
     open Deriving_Typerepr
-    val (/) : ('a, 'b) p -> (('a, 'b) p -> ('a, 'c) p) -> ('a, 'c) p
-    val (-->) : ('a, 'b) p -> 'b config -> 'a pathed_config
-    val (--->) : ('a, 'b) p -> 'b pathed_config list -> 'a pathed_config
-    val root : ('a, 'a) p
-    val list_item : int -> ('a, 'b list) p -> ('a, 'b) p
-    val some : ('a, 'b option) p -> ('a, 'b) p
-    val nullary_case : 'b t -> string -> ('a, 'b) p -> ('a, unit) p
-    val unary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
-    val nary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
-    val component : 'b t -> int -> 'c t -> ('a, 'b) p -> ('a, 'c) p
-    val field : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+    val (/) : ('a, 'b) p -> ('b, 'c) p -> ('a, 'c) p
+    val (-->) : ('a, 'b) p -> [ `Config of 'b config | `Tree of 'b pathed_config list ] -> 'a pathed_config
+
+    include module type of Deriving_Typerepr.Path
   end
 
   (** Name of the installed CSS file *)

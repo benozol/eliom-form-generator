@@ -594,35 +594,48 @@
   type 'a any_field_opt_value =
     | Any_field_opt_value : ('a, 'b) field * 'b option -> 'a any_field_opt_value
 
+  type 'a value = [ `Default of 'a | `Constant of 'a ]
   module Value = struct
-    type 'a t = [ `Default of 'a | `Constant of 'a ]
     let kind = function
       | `Default _ -> fun x -> `Default x
       | `Constant _ -> fun x -> `Constant x
     let get = function
       | `Default x -> x
       | `Constant x -> x
-    let map : ('a -> 'b) -> 'a t -> 'b t =
+    let map =
       fun f v ->
         kind v @ f @ get v
-    let put_over_option : 'a option t -> 'a t option =
+    let put_over_option =
       fun v ->
         match get v with
           | Some a -> Some (kind v a)
           | None -> None
   end
 
+  type 'a widget_fun =
+    ?value:'a value ->
+    'a Eliom_parameter.setoneradio Eliom_parameter.param_name ->
+    Html5_types.span_content Eliom_content.Html5.elt
+
+  type 'a template =
+    | Widget : 'a atomic * 'a widget_fun -> 'a template
+
+  let string_widget f =
+    Widget (String, f)
+
   type 'a config = {
-    value : 'a Value.t option;
+    value : 'a value option;
     label : string option;
     a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list;
+    template : 'a template option
   }
   module Config = struct
-    let zero = { value = None ; label = None ; a = [] }
+    let zero = { value = None ; label = None ; a = [] ; template = None}
     let plus c1 c2 =
       { value = Option.plus c1.value c2.value ;
         label = Option.plus c1.label c2.label ;
-        a = List.append c1.a c2.a }
+        a = List.append c1.a c2.a ;
+        template = Option.plus c1.template c2.template }
     let value value = { zero with value }
   end
 
@@ -685,7 +698,7 @@
       in
       fold { folder } [] value t
 
-  let from_value : type a b . (a, b) p -> b Value.t -> b t -> a configs =
+  let from_value : type a b . (a, b) p -> b value -> b t -> a configs =
     fun original_path value t ->
       let folder configs (Any_path path) =
         Option.default configs @
@@ -696,18 +709,20 @@
       in
       List.fold_left folder Configs.zero @ paths (Value.get value) t
 
-  let rec aux_form_tuple : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b tuple -> form_content elt =
+  let rec aux_form_tuple : type a b . a configs -> b value option -> (a, b) p -> string -> b tuple -> form_content elt =
     fun configs value path name { components } ->
-      let { value ; a ; _ } = configs_find_with_value path configs value in
+      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      assert (template = None);
       Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a) @
         flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
           let value = flip Option.map value (Value.map @ get_tuple_component component) in
           let path = Tuple_component (component, path) in
           aux_form configs value path name t
 
-  and aux_form_sum  : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b sum -> form_content elt =
+  and aux_form_sum  : type a b . a configs -> b value option -> (a, b) p -> string -> b sum -> form_content elt =
     fun configs value path name { summands } ->
-      let { value ; a ; _ } = configs_find_with_value path configs value in
+      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      assert (template = None);
       let selector =
         let a = [ a_class [ sum_selector_class ] ] in
         let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
@@ -771,14 +786,15 @@
       Html5.D.div ~a:(a_class [form_class; sum_class] :: a)
         [span [selector; marker]; content ]
 
-  and aux_form_record : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b record -> form_content elt =
+  and aux_form_record : type a b . a configs -> b value option -> (a, b) p -> string -> b record -> form_content elt =
     fun configs value path name { fields } ->
-      let { value ; a ; _ } = configs_find_with_value path configs value in
+      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      assert (template = None);
       let rows =
         flip List.map fields @ fun (field_name, Any_field (Field (_, t) as field)) ->
           let path = Record_field (field, path) in
           let value = flip Option.map value @ Value.map @ get_record_field field in
-          let { a ; label ; value } = configs_find_with_value path configs value in
+          let { a ; label ; value ; _ } = configs_find_with_value path configs value in
           let label = Option.default field_name label in
           let content = aux_form configs value path name t in
           tr ~a [
@@ -791,7 +807,7 @@
       Html5.D.table ~a:(a_class[form_class; record_class] :: a)
         (List.hd rows) (List.tl rows)
 
-  and aux_list_item : type a b . a configs -> b Value.t option -> (a, b) p -> int -> string -> b Deriving_Typerepr.t -> Html5_types.li elt =
+  and aux_list_item : type a b . a configs -> b value option -> (a, b) p -> int -> string -> b Deriving_Typerepr.t -> Html5_types.li elt =
     fun configs value path _ix name t ->
       let remove =
         Html5.D.Raw.a ~a:[a_class [button_remove_class]] [
@@ -800,7 +816,7 @@
         ]
       in
       let item =
-        let { value ; a ; _ } = configs_find_with_value path configs value in
+        let { value ; a ; label ; template } = configs_find_with_value path configs value in
         let a = a_class [list_item_class] :: a in
         Html5.D.li ~a [
           aux_form configs value path name t;
@@ -823,36 +839,36 @@
       }};
       item
 
-  and aux_atomic : type a b . a configs -> b Value.t option -> (a, b) p -> string -> b atomic -> form_content elt =
-    fun configs value path name at ->
-      let { value ; a ; _ } = configs_find_with_value path configs value in
+  and aux_atomic : type a b . a configs -> b value option -> (a, b) p -> string -> b atomic -> form_content elt =
+    fun configs value path name atomic ->
+      let { value ; a ; label ; template } = configs_find_with_value path configs value in
       let a = a_class [form_class; atomic_class] :: a in
-      match at with
-        | Unit -> Html5.D.span ~a []
-        | String ->
-          let value = Option.map Value.get value in
-          marked ~a @ raw_input ~input_type:`Text ?value ~name ()
-        | Int ->
-          let value = Option.map Value.get value in
-          let value = Option.map string_of_int value in
-          marked ~a @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
-        | Int32 ->
-          let value = Option.map Value.get value in
-          let value = Option.map Int32.to_string value in
-          marked ~a @ raw_input~a:[a_step @ `Step 1.0]  ~input_type:`Number ?value ~name ()
-        | Int64 ->
-          let value = Option.map Value.get value in
-          let value = Option.map Int64.to_string value in
-          marked ~a @ raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
-        | Float ->
-          let value = Option.map Value.get value in
-          let value = Option.map string_of_float value in
-          marked ~a @ raw_input ~a:[a_step `Any] ~input_type:`Number ?value ~name ()
-        | Bool ->
-          let value = Option.map Value.get value in
-          marked ~a @ raw_checkbox ?checked:value ~name ~value:"" ()
+      marked ~a @
+        match template with
+          | Some (Widget (atomic', widget)) when eq_atomic atomic atomic' ->
+            widget ?value (Obj.magic name)
+          | _ ->
+            let value = Option.map Value.get value in
+            match atomic with
+              | Unit -> Html5.D.span []
+              | String ->
+                raw_input ~input_type:`Text ?value ~name ()
+              | Int ->
+                let value = Option.map string_of_int value in
+                raw_input ~input_type:`Text ?value ~name ()
+              | Int32 ->
+                let value = Option.map Int32.to_string value in
+                raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
+              | Int64 ->
+                let value = Option.map Int64.to_string value in
+                raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
+              | Float ->
+                let value = Option.map string_of_float value in
+                raw_input ~a:[a_step `Any] ~input_type:`Number ?value ~name ()
+              | Bool ->
+                raw_checkbox ?checked:value ~name ~value:"" ()
 
-  and aux_form : type a b . ?is_outmost:bool -> a configs -> b Value.t option -> (a, b) p -> string -> b t -> form_content elt =
+  and aux_form : type a b . ?is_outmost:bool -> a configs -> b value option -> (a, b) p -> string -> b t -> form_content elt =
     fun ?(is_outmost=false) configs value path name t ->
       let configs =
         if is_outmost then
@@ -879,10 +895,11 @@
         | Ref _ ->
           failwith "Generate_form.form: not for refs"
 
-  and aux_form_option : type a b . a configs -> b option Value.t option -> (a, b option) p -> string -> b t -> form_content elt =
+  and aux_form_option : type a b . a configs -> b option value option -> (a, b option) p -> string -> b t -> form_content elt =
     let open Html5.F in
     fun configs value path name t ->
-      let { value ; a ;_ } = configs_find_with_value path configs value in
+      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      assert (template = None);
       let selector =
         let checked = Option.map ((<>) None) @ Option.map Value.get value in
         let a = [a_class[option_selector_class]] in
@@ -907,9 +924,10 @@
       let a = a_class [form_class; option_class] :: a in
       Html5.D.div ~a [ marked selector; content]
 
-  and aux_form_list : type a b . a configs -> b list Value.t option -> (a, b list) p -> name -> b t -> form_content elt =
+  and aux_form_list : type a b . a configs -> b list value option -> (a, b list) p -> name -> b t -> form_content elt =
     fun configs value path name t ->
-      let { value ; a ; _ } = configs_find_with_value path configs value in
+      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      assert (template = None);
       let add =
         Html5.D.Raw.a ~a:[a_class [button_add_class]] [
           span ~a:[a_class [label_class]] [pcdata "add"];
@@ -986,22 +1004,16 @@
       content
 
   module Pathed_config = struct
-    let (-->) p c = Pathed_config (p, c)
-    let (--->) p cs = Pathed_deep_config (p, cs)
-    let (/) p mk = mk p
-    let config ?value ?label ?(a=[]) () = { value ; label ; a }
+    let (-->) p = function
+      | `Config c -> Pathed_config (p, c)
+      | `Tree pcs -> Pathed_deep_config (p, pcs)
+    let (/) p1 p2 = compose p2 p1
+    let config ?value ?label ?(a=[]) ?template () =
+      `Config { value ; label ; a ; template }
+    let tree pcs = `Tree pcs
     let constant x = `Constant x
     let default x = `Default x
-    let root = Root
-    let component = the_component
-    let nullary_case = the_nullary_case
-    let unary_case = the_unary_case
-    let nary_case = the_nary_case
-    let field = the_field
-    let list_item ix p = List_item (ix, p)
-    let array_item ix p = Array_item (ix, p)
-    let some p = Option_some p
-    let content p = Ref_content p
+    include Path
   end
 
   let json_of_typerepr : type a . a t -> a Deriving_Json.t =
