@@ -92,6 +92,11 @@
   let sum_content_class = "eliom-form-sum-content"
   let sum_case_class = "eliom-form-sum-case"
   let sum_case_marker_class case = sum_case_class ^ "-" ^ case
+  let variant_class = "eliom-form-variant"
+  let variant_selector_class = "eliom-form-variant-selector"
+  let variant_content_class = "eliom-form-variant-content"
+  let variant_case_class = "eliom-form-variant-case"
+  let variant_case_marker_class case = variant_case_class ^ "-" ^ case
   let tuple_class = "eliom-form-tuple"
   let record_class = "eliom-form-record"
   let record_field_marker_class field = "eliom-form-record-field-"^field
@@ -219,7 +224,8 @@
         tuple_class, `Tuple ;
         record_class, `Record  ;
         list_class, `List ;
-        atomic_class, `Atomic
+        atomic_class, `Atomic ;
+        variant_class, `Variant ;
       ]
     with
       | [_, category] -> category
@@ -289,6 +295,30 @@
       Eliom_lib.error_any form "sum_cases: not a sum";
     querySelectorAll ~not_between:(flip has_class form_class) form ".%s" sum_case_class
 
+  let variant_selector form =
+    trace_any form "variant_selector";
+    if not @ has_class form variant_class then
+      Eliom_lib.error_any form "variant_selector: not a variant";
+    let select =
+      Option.default_delayed (fun () -> Eliom_lib.error_any form "Generate_form.variant_selector: No selector") @
+        querySelector ~not_between:(flip has_class form_class) form ".%s" variant_selector_class
+    in
+    Js.Opt.get (Dom_html.CoerceTo.select select)
+      (fun () -> Eliom_lib.error_any select "Generate_form.variant_selector: Not select")
+
+  let variant_case form case =
+    trace_any form "variant_case %s" case;
+    if not @ has_class form variant_class then
+      Eliom_lib.error_any form "variant_case: not a variant";
+    Option.default_delayed (fun () -> Eliom_lib.error_any form "Generate_form.variant_selector: No case %s" case) @
+      querySelector ~not_between:(flip has_class form_class) form ".%s" (variant_case_marker_class case)
+
+  let variant_cases form =
+    trace_any form "variant_cases";
+    if not @ has_class form variant_class then
+      Eliom_lib.error_any form "variant_cases: not a variant";
+    querySelectorAll ~not_between:(flip has_class form_class) form ".%s" variant_case_class
+
   let is_required_form_local form =
     trace_any form "is_required_local";
     if not @ has_class form form_class then
@@ -311,6 +341,14 @@
               let case_content = sum_case parent case in
               with_class_id form @ fun class_id ->
                 Js.Opt.test (case_content ## querySelector (js_string ".%s" class_id))
+          | `Variant ->
+            let case = Js.to_string @ (variant_selector parent) ## value in
+            if case = "" then
+              false
+            else
+              let case_content = variant_case parent case in
+              with_class_id form @ fun class_id ->
+                Js.Opt.test (case_content ## querySelector (js_string ".%s" class_id))
 
   let rec is_required_form node =
     trace_any node "is_required_form";
@@ -328,6 +366,17 @@
     let case = Js.to_string @ (sum_selector form) ## value in
     flip List.iter (sum_cases form) @ fun case_content ->
       if has_class case_content (sum_case_marker_class case) then
+        case_content ## style ## display <- js_string ""
+      else
+        case_content ## style ## display <- js_string "none"
+
+  let set_variant_hidden form =
+    trace_any form "set_variant_hidden";
+    if not @ has_class form variant_class then
+      Eliom_lib.error_any form "set_variant_hidden";
+    let case = Js.to_string @ (variant_selector form) ## value in
+    flip List.iter (variant_cases form) @ fun case_content ->
+      if has_class case_content (variant_case_marker_class case) then
         case_content ## style ## display <- js_string ""
       else
         case_content ## style ## display <- js_string "none"
@@ -352,11 +401,9 @@
     trace_any node "set_required_atomic";
     if not @ has_class node atomic_class then
       Eliom_lib.error_any node "set_required_atomic";
-    let input =
-      Js.Opt.get (node ## querySelector (js_string "input, textarea, select"))
-        (fun () -> Eliom_lib.error_any node "set_required_atomic: no control")
-    in
-    set_required input required
+    Js.Opt.iter
+      (node ## querySelector (js_string "input, textarea, select"))
+      (flip set_required required)
 
   let is_required_sum_selector node =
     trace_any node "is_required_sum_selector";
@@ -374,6 +421,22 @@
       Eliom_lib.error_any node "set_required_sum_selector";
     set_required node required
 
+  let set_required_variant_selector node required =
+    trace_any node "set_required_variant_selector";
+    if not @ has_class node variant_selector_class then
+      Eliom_lib.error_any node "set_required_variant_selector";
+    set_required node required
+
+  let is_required_variant_selector node =
+    trace_any node "is_required_variant_selector";
+    if not @ has_class node variant_selector_class then
+      Eliom_lib.error_any node "is_required_variant_selector";
+    let form =
+      Option.default_delayed (fun () -> Eliom_lib.error_any node "is_required_variant_selector: not within generated form") @
+        parent_with_class form_class node
+    in
+    is_required_form form
+
   let reset_required (outmost : #Dom_html.element Js.t) =
     trace_any outmost "reset_required";
     if not @ has_class outmost form_outmost_class then
@@ -387,10 +450,19 @@
       before (Eliom_lib.trace "%i sum selectors to reset required" -| List.length) @
         Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" sum_selector_class));
 
+    List.iter (fun input -> set_required_variant_selector input @ is_required_variant_selector input) @
+      before (Eliom_lib.trace "%i variant selectors to reset required" -| List.length) @
+        Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" variant_selector_class));
+
     List.iter set_sum_hidden @
       before (Eliom_lib.trace "%i sums" -| List.length) @
         cons_if (flip has_class sum_class) outmost @
           Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" sum_class));
+
+    List.iter set_variant_hidden @
+      before (Eliom_lib.trace "%i variants" -| List.length) @
+        cons_if (flip has_class variant_class) outmost @
+          Dom.list_of_nodeList (outmost ## querySelectorAll (js_string ".%s" variant_class));
 
     List.iter set_option_hidden @
       before (Eliom_lib.trace "%i options" -| List.length) @
@@ -503,20 +575,20 @@
           let selector = sum_selector node in
           let case = Js.to_string @ selector ## value in
           if case = "" then
-            Eliom_lib.error_any node "data_from_form: no case selected";
+            Eliom_lib.error_any node "data_from_form: no case selected for sum";
           let Any_summand summand = List.assoc case summands in
           (match summand with
             | Summand_nullary _ as summand ->
               create_sum_case summand ()
             | Summand_unary unary_summand as summand ->
-              let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
+              let _, t = (unary_summand : (_, _) unary :> _ * _) in
               let content =
                 Js.Opt.get (sum_case node case) ## childNodes ## item(0) @
                   fun () -> Eliom_lib.error_any  node "data_from_form: no elt for sum case %S" case
               in
               create_sum_case summand @ data_from_form content t
             | Summand_nary nary_summand as summand ->
-              let _, tuple = (nary_summand : (_, _) nary_summand :> _ * _) in
+              let _, tuple = (nary_summand : (_, _) nary :> _ * _) in
               let content =
                 Js.Opt.get
                   (Js.Opt.bind
@@ -525,6 +597,34 @@
                   fun () -> Eliom_lib.error_any  node "data_from_form: no tuple for sum case %S" case
               in
               create_sum_case summand @ aux_tuple content tuple)
+        | Variant { tagspecs } ->
+          if category <> `Variant then
+            Eliom_lib.error_any node "data_from_form: variant";
+          let selector = variant_selector node in
+          let case = Js.to_string @ selector ## value in
+          if case = "" then
+            Eliom_lib.error_any node "data_from_form: no case selected for variant";
+          let Any_tagspec tagspec = List.assoc case tagspecs in
+          (match tagspec with
+            | Tag_nullary _ as tag ->
+              create_variant_case tag ()
+            | Tag_unary unary as tag ->
+              let _, t = (unary : (_, _) unary :> _ * _) in
+              let content =
+                Js.Opt.get (variant_case node case) ## childNodes ## item(0) @
+                  fun () -> Eliom_lib.error_any  node "data_from_form: no elt for variant case %S" case
+              in
+              create_variant_case tag @ data_from_form content t
+            | Tag_nary nary as tag ->
+              let _, tuple = (nary : (_, _) nary :> _ * _) in
+              let content =
+                Js.Opt.get
+                  (Js.Opt.bind
+                     ((variant_case node case) ## childNodes ## item (0))
+                     Dom_html.CoerceTo.element) @
+                  fun () -> Eliom_lib.error_any  node "data_from_form: no tuple for variant case %S" case
+              in
+              create_variant_case tag @ aux_tuple content tuple)
         | Record ({ fields } as record) ->
           if category <> `Record then
             Eliom_lib.error_any node "data_from_form: not record";
@@ -545,11 +645,11 @@
           in
           create_record record f
         | Function _ ->
-          failwith "Generate_form.data_from_form"
+          failwith "Generate_form.data_from_form: function"
         | Ref _ ->
-          failwith "Generate_form.data_from_form"
+          failwith "Generate_form.data_from_form: ref"
         | Array _ ->
-          failwith "Generate_form.data_from_form"
+          failwith "Generate_form.data_from_form: array"
 
   let submit_form name any_t (form : Dom_html.formElement Js.t) =
     let open Deriving_Typerepr in
@@ -764,11 +864,11 @@
               match summand with
                 | Summand_nullary _ -> []
                 | Summand_unary unary_summand ->
-                  let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
+                  let _, t = (unary_summand : (_, _) unary :> _ * _) in
                   let path = Case_unary (unary_summand, path) in
                   [ aux_form configs value path name t ]
                 | Summand_nary nary_summand ->
-                  let (_, t) = (nary_summand : (_, _) nary_summand :> _ * _) in
+                  let (_, t) = (nary_summand : (_, _) nary :> _ * _) in
                   let path = Case_nary (nary_summand, path) in
                   [ Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a)
                       [ aux_form_tuple configs value path name t ] ]
@@ -784,6 +884,73 @@
                 | None -> failwith "Generate_form: no outmost"
       }};
       Html5.D.div ~a:(a_class [form_class; sum_class] :: a)
+        [span [selector; marker]; content ]
+
+  and aux_form_variant  : type a b . a configs -> b value option -> (a, b) p -> string -> b variant -> form_content elt =
+    fun configs value path name { tagspecs } ->
+      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      assert (template = None);
+      let selector =
+        let a = [ a_class [ variant_selector_class ] ] in
+        let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
+        let tagspecs =
+          flip List.map tagspecs @ fun (tagspec_name, Any_tagspec tagspec) ->
+            let value = flip Option.map value (get_variant_case_by_tagspec tagspec -| Value.get) in
+            let selected =
+              Option.default false @
+                Option.map (Option.default false) @
+                  Option.map (Option.map (const true)) value
+            in
+            let label =
+              match tagspec with
+                | Tag_nullary nullary ->
+                  let path = Variant_case_nullary (nullary, path) in
+                  (Configs.find path configs).label
+                | Tag_unary unary ->
+                  let path = Variant_case_unary (unary, path) in
+                  (Configs.find path configs).label
+                | Tag_nary nary ->
+                  let path = Variant_case_nary (nary, path) in
+                  (Configs.find path configs).label
+            in
+            let label = Option.default tagspec_name label in
+            Html5.D.Option ([], tagspec_name, Some (pcdata label), selected)
+        in
+        Html5.D.raw_select ~a ~name null tagspecs
+      in
+      let content =
+        div ~a:[a_class [variant_content_class]] @
+          flip List.map tagspecs @ fun (tagspec_name, Any_tagspec tagspec) ->
+            div ~a:[a_class [variant_case_class; variant_case_marker_class tagspec_name]] @
+              let value =
+                Option.bind value @ fun value ->
+                  match get_variant_case_by_tagspec tagspec (Value.get value) with
+                    | None -> None
+                    | Some value' -> Some (Value.kind value value')
+              in
+              match tagspec with
+                | Tag_nullary _ -> []
+                | Tag_unary unary ->
+                  let _, t = (unary : (_, _) unary :> _ * _) in
+                  let path = Variant_case_unary (unary, path) in
+                  [ aux_form configs value path name t ]
+                | Tag_nary nary ->
+                  let (_, t) = (nary : (_, _) nary :> _ * _) in
+                  let path = Variant_case_nary (nary, path) in
+                  [ Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a)
+                      [ aux_form_tuple configs value path name t ] ]
+      in
+      ignore {unit{
+        Lwt.async @ fun () ->
+          (* lwt () = Eliom_client.wait_load_end () in *)
+          let selector = Html5.To_dom.of_select %selector in
+          Lwt_js_events.changes selector @ fun _ _ ->
+            Lwt.return @
+              match parent_with_class form_outmost_class selector with
+                | Some outmost -> reset_required outmost
+                | None -> failwith "Generate_form: no outmost"
+      }};
+      Html5.D.div ~a:(a_class [form_class; variant_class] :: a)
         [span [selector; marker]; content ]
 
   and aux_form_record : type a b . a configs -> b value option -> (a, b) p -> string -> b record -> form_content elt =
@@ -888,6 +1055,8 @@
           aux_form_option configs value path name t
         | List t ->
           aux_form_list configs value path name t
+        | Variant tagspecs ->
+          aux_form_variant configs value path name tagspecs
         | Array _ ->
           failwith "Generate_form.form: not for array"
         | Function _ ->
@@ -1079,16 +1248,16 @@
                  let _, Any_case_value (summand, value) = get_sum_case sum value in
                  match summand with
                    | Summand_nullary nullary ->
-                     let ix = (nullary : _ nullary_summand :> int) in
+                     let ix = (nullary : _ nullary :> int) in
                      Printf.bprintf buffer "%d" ix
                    | Summand_unary unary ->
-                     let ix, t = (unary : (_, _) unary_summand :> _ * _) in
+                     let ix, t = (unary : (_, _) unary :> _ * _) in
                      let module Json = (val aux t) in
                      Printf.bprintf buffer "[%d," ix;
                      Json.write buffer value;
                      Buffer.add_char buffer ']'
                    | Summand_nary nary ->
-                     let ix, { components } = (nary : (_, _) nary_summand :> _ * _) in
+                     let ix, { components } = (nary : (_, _) nary :> _ * _) in
                      Printf.bprintf buffer "[%d" ix;
                      begin
                        flip List.iter components @ fun (Any_component component) ->
@@ -1120,7 +1289,7 @@
                        in
                        match summand with
                          | Summand_unary unary ->
-                           let _, t = (unary : (_, _) unary_summand :> _ * _) in
+                           let _, t = (unary : (_, _) unary :> _ * _) in
                            let module Json = (val aux t) in
                            Deriving_Json_lexer.read_comma buf;
                            let value = Json.read buf in
@@ -1133,13 +1302,94 @@
                                Deriving_Json_lexer.read_comma buf;
                                Json.read buf
                              in
-                             let _, t = (nary : (_, _) nary_summand :> _ * _) in
+                             let _, t = (nary : (_, _) nary :> _ * _) in
                              create_tuple t { create_tuple_component }
                            in
                            let res = create_sum_case summand tuple in
                            ignore @ Deriving_Json_lexer.read_rbracket buf;
                            res
                          | Summand_nullary _ -> assert false
+                     end
+              end))
+      | Variant ({ tagspecs } as variant) ->
+        (module
+           Deriving_Json.Defaults
+             (struct
+               type x = a
+               type a = x
+               let write buffer value =
+                 let _, Any_variant_value (tagspec, value) = get_variant_case variant value in
+                 match tagspec with
+                   | Tag_nullary nullary ->
+                     let ix = (nullary : _ nullary :> int) in
+                     Printf.bprintf buffer "%d" ix
+                   | Tag_unary unary ->
+                     let ix, t = (unary : (_, _) unary :> _ * _) in
+                     let module Json = (val aux t) in
+                     Printf.bprintf buffer "[%d," ix;
+                     Json.write buffer value;
+                     Buffer.add_char buffer ']'
+                   | Tag_nary nary ->
+                     let ix, { components } = (nary : (_, _) nary :> _ * _) in
+                     Printf.bprintf buffer "[%d" ix;
+                     begin
+                       flip List.iter components @ fun (Any_component component) ->
+                         let Component (t, _) = component in
+                         let module Json = (val aux t) in
+                         Buffer.add_char buffer ',';
+                         Json.write buffer @ get_tuple_component component value
+                     end;
+                     Buffer.add_char buffer ']'
+               let read buf =
+                 let is_nullary = function
+                   | _, Any_tagspec (Tag_nullary _) -> true
+                   | _ -> false
+                 in
+                 let find_tagspec ix =
+                   flip List.find tagspecs @ fun (_, Any_tagspec tagspec) ->
+                     ix =
+                       match tagspec with
+                         | Tag_nullary nullary ->
+                           (nullary : _ nullary :> int)
+                         | Tag_unary unary ->
+                           fst (unary : (_,_) unary :> _ * _)
+                         | Tag_nary nary ->
+                           fst (nary : (_,_) nary :> _ * _)
+                 in
+                 match Deriving_Json_lexer.read_case buf with
+                   | `Cst ix ->
+                     let _, Any_tagspec tagspec = find_tagspec ix in
+                     begin
+                       match tagspec with
+                         | Tag_nullary _ as tag ->
+                           create_variant_case tag ()
+                         | _ -> assert false
+                     end
+                   | `NCst ix ->
+                     begin
+                       let _, Any_tagspec tagspec = find_tagspec ix in
+                       match tagspec with
+                         | Tag_unary unary ->
+                           let _, t = (unary : (_, _) unary :> _ * _) in
+                           let module Json = (val aux t) in
+                           Deriving_Json_lexer.read_comma buf;
+                           let value = Json.read buf in
+                           ignore @ Deriving_Json_lexer.read_rbracket buf;
+                           create_variant_case tagspec value
+                         | Tag_nary nary ->
+                           let tuple =
+                             let create_tuple_component (type b) (Component ((t : b t), _)) =
+                               let module Json = (val aux t) in
+                               Deriving_Json_lexer.read_comma buf;
+                               Json.read buf
+                             in
+                             let _, t = (nary : (_, _) nary :> _ * _) in
+                             create_tuple t { create_tuple_component }
+                           in
+                           let res = create_variant_case tagspec tuple in
+                           ignore @ Deriving_Json_lexer.read_rbracket buf;
+                           res
+                         | Tag_nullary _ -> assert false
                      end
               end))
       | Record ({ fields } as record) ->
