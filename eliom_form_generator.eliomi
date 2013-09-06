@@ -1,13 +1,15 @@
 {shared{
 
+  open Eliom_content
+
   type 'a pathed_config
 
   (** {1 Generate Eliom form content from runtime type representation} *)
   val content :
-    'a Deriving_Typerepr.t ->
     ?configs:('a pathed_config list) ->
+    'a Deriving_Typerepr.t ->
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name ->
-    Html5_types.form_content Eliom_content.Html5.elt
+    Html5_types.form_content Html5.elt
 
   type 'a config
   type 'a value
@@ -15,7 +17,7 @@
   val string_widget :
     (?value:[`Default of string|`Constant of string] ->
      string Eliom_parameter.setoneradio Eliom_parameter.param_name ->
-     Html5_types.span_content Eliom_content.Html5.elt) ->
+     Html5_types.span_content Html5.elt) ->
     string template
 
   (** Auxiliary function for the construction of the [configs] parameter *)
@@ -26,7 +28,8 @@
     val config :
       ?value:'a value ->
       ?label:string ->
-      ?a:Html5_types.div_attrib Eliom_content.Html5.F.attrib list ->
+      ?annotation:string ->
+      ?a:Html5_types.div_attrib Html5.attrib list ->
       ?template:'a template ->
       unit -> [> `Config of 'a config ]
     val tree : 'a pathed_config list -> [> `Tree of 'a pathed_config list ]

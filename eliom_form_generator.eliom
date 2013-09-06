@@ -101,6 +101,7 @@
   let record_class = "eliom-form-record"
   let record_field_marker_class field = "eliom-form-record-field-"^field
   let label_class = "eliom-form-label"
+  let annotation_class = "eliom-form-annotation"
   let marker_class = "eliom-form-input-marker"
   let selector_snippet = "selector"
   let content_snippet = "content"
@@ -108,7 +109,6 @@
   let list_item_class = "eliom-form-list-item"
   let button_add_class = "eliom-form-add-elt"
   let button_remove_class = "eliom-form-remove-elt"
-  let label_class = "eliom-form-label"
   let marker = Eliom_content.Html5.F.(span ~a:[a_class [marker_class]] [])
   let marked ?a input = Eliom_content.Html5.D.span ?a [ input ; marker ]
 }}
@@ -743,14 +743,16 @@
   type 'a config = {
     value : 'a value option;
     label : string option;
+    annotation : string option;
     a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list;
     template : 'a template option
   }
   module Config = struct
-    let zero = { value = None ; label = None ; a = [] ; template = None}
+    let zero = { value = None ; label = None ; annotation = None ; a = [] ; template = None}
     let plus c1 c2 =
       { value = Option.plus c1.value c2.value ;
         label = Option.plus c1.label c2.label ;
+        annotation = Option.plus c1.annotation c2.annotation ;
         a = List.append c1.a c2.a ;
         template = Option.plus c1.template c2.template }
     let value value = { zero with value }
@@ -828,7 +830,7 @@
 
   let rec aux_form_tuple : type a b . a configs -> b value option -> (a, b) p -> string -> b tuple -> form_content elt =
     fun configs value path name { components } ->
-      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
       Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a) @
         flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
@@ -838,7 +840,7 @@
 
   and aux_form_sum  : type a b . a configs -> b value option -> (a, b) p -> string -> b sum -> form_content elt =
     fun configs value path name { summands } ->
-      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
       let selector =
         let a = [ a_class [ sum_selector_class ] ] in
@@ -905,7 +907,7 @@
 
   and aux_form_variant  : type a b . a configs -> b value option -> (a, b) p -> string -> b variant -> form_content elt =
     fun configs value path name { tagspecs } ->
-      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
       let selector =
         let a = [ a_class [ variant_selector_class ] ] in
@@ -972,20 +974,23 @@
 
   and aux_form_record : type a b . a configs -> b value option -> (a, b) p -> string -> b record -> form_content elt =
     fun configs value path name { fields } ->
-      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
       let rows =
         flip List.map fields @ fun (field_name, Any_field (Field (_, t) as field)) ->
           let path = Record_field (field, path) in
           let value = flip Option.map value @ Value.map @ get_record_field field in
-          let { a ; label ; value ; _ } = configs_find_with_value path configs value in
+          let { a ; label ; annotation ; value ; _ } = configs_find_with_value path configs value in
           let label = Option.default field_name label in
+          let annotation = Option.default "" annotation in
           let content = aux_form configs value path name t in
           tr ~a [
             td ~a:[a_class [label_class]]
               [pcdata label];
-            td ~a:[a_class [ record_field_marker_class field_name ]]
-              [ content ];
+            td ~a:[a_class [record_field_marker_class field_name]]
+              [content];
+            td ~a:[a_class [annotation_class]]
+              [pcdata annotation]
           ]
       in
       Html5.D.table ~a:(a_class[form_class; record_class] :: a)
@@ -1000,7 +1005,7 @@
         ]
       in
       let item =
-        let { value ; a ; label ; template } = configs_find_with_value path configs value in
+        let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
         let a = a_class [list_item_class] :: a in
         Html5.D.li ~a [
           aux_form configs value path name t;
@@ -1025,7 +1030,7 @@
 
   and aux_atomic : type a b . a configs -> b value option -> (a, b) p -> string -> b atomic -> form_content elt =
     fun configs value path name atomic ->
-      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       let a = a_class [form_class; atomic_class] :: a in
       marked ~a @
         match template with
@@ -1084,7 +1089,7 @@
   and aux_form_option : type a b . a configs -> b option value option -> (a, b option) p -> string -> b t -> form_content elt =
     let open Html5.F in
     fun configs value path name t ->
-      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
       let selector =
         let checked = Option.map ((<>) None) @ Option.map Value.get value in
@@ -1112,7 +1117,7 @@
 
   and aux_form_list : type a b . a configs -> b list value option -> (a, b list) p -> name -> b t -> form_content elt =
     fun configs value path name t ->
-      let { value ; a ; label ; template } = configs_find_with_value path configs value in
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
       let add =
         Html5.D.Raw.a ~a:[a_class [button_add_class]] [
@@ -1163,9 +1168,9 @@
             | Pathed_deep_config (p', pcs) ->
               flatten_pathed_config (compose p' p) pcs cs
 
-  let content : type w a . a t -> ?configs:a pathed_config list ->
+  let content : type w a . ?configs:a pathed_config list -> a t ->
                   [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
-    fun t ?(configs=[]) name ->
+    fun ?(configs=[]) t name ->
       let configs = flatten_pathed_config Root configs Configs.zero in
       let name = (Obj.magic name : string) in
       let content = aux_form ~is_outmost:true configs None Root name t in
@@ -1192,8 +1197,8 @@
       | `Config c -> Pathed_config (p, c)
       | `Tree pcs -> Pathed_deep_config (p, pcs)
     let (/) p1 p2 = compose p2 p1
-    let config ?value ?label ?(a=[]) ?template () =
-      `Config { value ; label ; a ; template }
+    let config ?value ?label ?annotation ?(a=[]) ?template () =
+      `Config { value ; label ; annotation ; a ; template }
     let tree pcs = `Tree pcs
     let constant x = `Constant x
     let default x = `Default x
