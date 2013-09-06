@@ -68,3 +68,10 @@
   val json_of_typerepr : 'a Deriving_Typerepr.t -> 'a Deriving_Json.t
 
 }}
+
+{client{
+  (** Initializes the generated form content.
+      To call, if the the content doesn't arrive in a form as part of the
+      DOM from the server. *)
+  val init_form : Dom_html.formElement Js.t -> unit
+}}

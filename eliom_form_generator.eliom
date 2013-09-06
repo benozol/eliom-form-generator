@@ -651,36 +651,53 @@
         | Array _ ->
           failwith "Generate_form.data_from_form: array"
 
-  let submit_form name any_t (form : Dom_html.formElement Js.t) =
-    let open Deriving_Typerepr in
-    trace_any form "submit_form";
-    match any_t with
-      | Any_t t ->
-        let content =
-          flip Option.default_delayed (querySelector form ".%s" form_outmost_class) @
-            fun () -> Eliom_lib.error_any form "submit_for: No outmost form"
-        in
-        let value = data_from_form (content :> Dom.node Js.t) t in
-        Eliom_lib.debug "submit_form: %s (%s)"
-          (show t value) (Eliom_lib.to_json value);
-        let form' =
-          Js.Opt.get
-            (Js.Opt.bind
-               (Dom_html.CoerceTo.element @ form ## cloneNode (Js._true))
-               Dom_html.CoerceTo.form) @
-            fun () -> assert false
-        in
-        begin
-          let query = js_string "input[name=%S], textarea[name=%S], select[name=%S]" name name name in
-          flip List.iter (Dom.list_of_nodeList @ form' ## querySelectorAll (query)) @ fun input ->
-            Js.Opt.iter (input ## parentNode) @ fun parent ->
-              ignore @ parent ## removeChild ((input :> Dom.node Js.t))
-        end;
-        let input = Html5.F.raw_input ~name ~input_type:`Text ~value:(Eliom_lib.to_json value) () in
-        ignore @ form' ## appendChild (Html5.To_dom.of_node input);
-        ignore @ form' ## onsubmit <- Eliom_client.form_handler;
-        form' ## submit ()
+ let name_any_t_custom_data =
+   Eliom_content.Html5.Custom_data.create
+     ~name:"name_any_t"
+     ~to_string:(Eliom_lib.to_json ?typ:None)
+     ~of_string:(Eliom_lib.of_json ?typ:None)
+     ()
+
+ let init_form name any_t (form : Dom_html.formElement Js.t) =
+   form ## onsubmit <- Dom_html.handler @ fun _ ->
+     trace "SUBMIT";
+     (try
+        let open Deriving_Typerepr in
+        match any_t with
+          | Any_t t ->
+            let content =
+              flip Option.default_delayed (querySelector form ".%s" form_outmost_class) @
+                fun () -> Eliom_lib.error_any form "submit_for: No outmost form"
+            in
+            let value = data_from_form (content :> Dom.node Js.t) t in
+            Eliom_lib.debug "submit_form: %s (%s)"
+              (show t value) (Eliom_lib.to_json value);
+            let form' =
+              Js.Opt.get
+                (Js.Opt.bind
+                   (Dom_html.CoerceTo.element @
+                      form ## cloneNode (Js._true))
+                   Dom_html.CoerceTo.form) @
+                fun () -> assert false
+            in
+            begin
+              let query = js_string "input[name=%S], textarea[name=%S], select[name=%S]" name name name in
+              flip List.iter (Dom.list_of_nodeList @ form' ## querySelectorAll (query)) @ fun input ->
+                Js.Opt.iter (input ## parentNode) @ fun parent ->
+                  ignore @ parent ## removeChild ((input :> Dom.node Js.t))
+            end;
+            let input = Html5.F.raw_input ~name ~input_type:`Text ~value:(Eliom_lib.to_json value) () in
+            Dom.appendChild form' (Html5.To_dom.of_node input);
+            ignore (form' ## onsubmit <- Eliom_client.form_handler);
+            form' ## style ## display <- js_string "none";
+            Dom.appendChild (Dom_html.document ## body) form';
+            form' ## submit ();
+            Dom.removeChild (Dom_html.document ## body) form'
+      with exn ->
+        Eliom_lib.debug_exn "Error while submitting" exn);
+     Js._false
  }}
+
 {shared{
   let aux_list_item_ref : (int -> string -> Deriving_Typerepr.any_t -> Html5_types.li elt) ref =
     ref @ fun _ _ _ -> failwith "aux_list_item_ref"
@@ -1156,19 +1173,17 @@
         onload_or_now @ fun () ->
           let content = Html5.To_dom.of_element %content in
           reset_required content;
-          flip Option.may (parent Dom_html.(tagged |- function Form _ -> true | _ -> false) content) @
-            fun form ->
+          match parent Dom_html.(tagged |- function Form _ -> true | _ -> false) content with
+            | None ->
+               Firebug.console##log_2 (Js.string "Content not within form; call Eliom_form_generator.init_form on form", content);
+               Eliom_content_core.Html5.Custom_data.set_dom content
+                 name_any_t_custom_data (%name, %(Deriving_Typerepr.Any_t t))
+            | Some form ->
               let form =
                 Js.Opt.get (Dom_html.CoerceTo.form form)
                   (fun () -> assert false)
               in
-              form ## onsubmit <- Dom_html.handler @ fun _ ->
-                trace "SUBMIT";
-                (try
-                   submit_form %name %(Deriving_Typerepr.Any_t t) form
-                 with exn ->
-                   Eliom_lib.debug_exn "Error while submitting" exn);
-                Js._false
+              init_form %name %(Deriving_Typerepr.Any_t t) form
       }};
       content
 
@@ -1433,4 +1448,21 @@
     aux_list_item_ref :=
       fun ix name (Any_t t) ->
         aux_list_item Configs.zero None Root ix name t
+
+  let init_form form =
+    Eliom_lib.debug "Eliom_form_generator.init_form";
+    let name, any_t =
+      let content =
+        Js.Opt.get (form ## querySelector (js_string ".%s" form_outmost_class)) @
+          fun () ->
+            Eliom_lib.error_any content "Eliom_form_generator.init_form: No outmost content"
+      in
+      try
+        Eliom_content.Html5.Custom_data.get_dom content
+          name_any_t_custom_data
+      with Not_found ->
+        Eliom_lib.error_any content "Eliom_form_generator.init_form: Already called"
+    in
+    Eliom_lib.debug "Eliom_form_generator.init_form: found name %S" name;
+    init_form name any_t form
 }}
