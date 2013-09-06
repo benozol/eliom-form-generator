@@ -15,7 +15,7 @@
   type 'a value
   type 'a template
   val string_widget :
-    (?value:[`Default of string|`Constant of string] ->
+    (?value:[`Default of string|`Constant of string|`Hidden of string] ->
      string Eliom_parameter.setoneradio Eliom_parameter.param_name ->
      Html5_types.span_content Html5.elt) ->
     string template
@@ -25,6 +25,8 @@
 
     val default : 'a -> 'a value
     val constant : 'a -> 'a value
+    val hidden : 'a -> 'a value
+
     val config :
       ?value:'a value ->
       ?label:string ->

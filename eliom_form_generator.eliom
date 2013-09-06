@@ -711,14 +711,16 @@
   type 'a any_field_opt_value =
     | Any_field_opt_value : ('a, 'b) field * 'b option -> 'a any_field_opt_value
 
-  type 'a value = [ `Default of 'a | `Constant of 'a ]
+  type 'a value = [ `Default of 'a | `Constant of 'a | `Hidden of 'a ]
   module Value = struct
     let kind = function
       | `Default _ -> fun x -> `Default x
       | `Constant _ -> fun x -> `Constant x
+      | `Hidden _ -> fun x -> `Hidden x
     let get = function
       | `Default x -> x
       | `Constant x -> x
+      | `Hidden x -> x
     let map =
       fun f v ->
         kind v @ f @ get v
@@ -755,7 +757,6 @@
         annotation = Option.plus c1.annotation c2.annotation ;
         a = List.append c1.a c2.a ;
         template = Option.plus c1.template c2.template }
-    let value value = { zero with value }
   end
 
   type 'a any_path = Any_path : ('a, _) p -> 'a any_path
@@ -805,7 +806,11 @@
 
   let configs_find_with_value configs path value =
     let c = Configs.find configs path in
-    Config.plus c @ Config.value value
+    let c = Config.plus c { Config.zero with value } in
+    match c.value with
+      | Some (`Hidden value) ->
+        { c with a = a_hidden `Hidden :: c.a }
+      | _ -> c
 
   type 'a configs = 'a Configs.configs
 
@@ -1037,25 +1042,30 @@
           | Some (Widget (atomic', widget)) when eq_atomic atomic atomic' ->
             widget ?value (Obj.magic name)
           | _ ->
+            let a =
+              match value with
+                | Some (`Constant _) -> [a_readonly `ReadOnly]
+                | _ -> []
+            in
             let value = Option.map Value.get value in
             match atomic with
               | Unit -> Html5.D.span []
               | String ->
-                raw_input ~input_type:`Text ?value ~name ()
+                raw_input ~a ~input_type:`Text ?value ~name ()
               | Int ->
                 let value = Option.map string_of_int value in
-                raw_input ~input_type:`Text ?value ~name ()
+                raw_input ~a ~input_type:`Text ?value ~name ()
               | Int32 ->
                 let value = Option.map Int32.to_string value in
-                raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
+                raw_input ~a:(a_step (`Step 1.0) :: a) ~input_type:`Number ?value ~name ()
               | Int64 ->
                 let value = Option.map Int64.to_string value in
-                raw_input ~a:[a_step @ `Step 1.0] ~input_type:`Number ?value ~name ()
+                raw_input ~a:(a_step (`Step 1.0) :: a) ~input_type:`Number ?value ~name ()
               | Float ->
                 let value = Option.map string_of_float value in
-                raw_input ~a:[a_step `Any] ~input_type:`Number ?value ~name ()
+                raw_input ~a:(a_step `Any :: a) ~input_type:`Number ?value ~name ()
               | Bool ->
-                raw_checkbox ?checked:value ~name ~value:"" ()
+                raw_checkbox ~a ?checked:value ~name ~value:"" ()
 
   and aux_form : type a b . ?is_outmost:bool -> a configs -> b value option -> (a, b) p -> string -> b t -> form_content elt =
     fun ?(is_outmost=false) configs value path name t ->
@@ -1202,6 +1212,7 @@
     let tree pcs = `Tree pcs
     let constant x = `Constant x
     let default x = `Default x
+    let hidden x = `Hidden x
     include Path
   end
 
