@@ -894,8 +894,7 @@
                 | Summand_nary nary_summand ->
                   let (_, t) = (nary_summand : (_, _) nary :> _ * _) in
                   let path = Case_nary (nary_summand, path) in
-                  [ Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a)
-                      [ aux_form_tuple configs value path name t ] ]
+                  [ aux_form_tuple configs value path name t ]
       in
       ignore {unit{
         Lwt.async @ fun () ->
@@ -961,8 +960,7 @@
                 | Tag_nary nary ->
                   let (_, t) = (nary : (_, _) nary :> _ * _) in
                   let path = Variant_case_nary (nary, path) in
-                  [ Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a)
-                      [ aux_form_tuple configs value path name t ] ]
+                  [ aux_form_tuple configs value path name t ]
       in
       ignore {unit{
         Lwt.async @ fun () ->
