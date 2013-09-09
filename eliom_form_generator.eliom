@@ -1355,7 +1355,7 @@
                    | Tag_unary unary ->
                      let ix, t = (unary : (_, _) unary :> _ * _) in
                      let module Json = (val aux t) in
-                     Printf.bprintf buffer "[%d," ix;
+                     Printf.bprintf buffer "[0,%d," ix;
                      Json.write buffer value;
                      Buffer.add_char buffer ']'
                    | Tag_nary nary ->
@@ -1394,8 +1394,10 @@
                            create_variant_case tag ()
                          | _ -> assert false
                      end
-                   | `NCst ix ->
+                   | `NCst 0 ->
                      begin
+                       Deriving_Json_lexer.read_comma buf;
+                       let ix = Deriving_Json.Json_int.read buf in
                        let _, Any_tagspec tagspec = find_tagspec ix in
                        match tagspec with
                          | Tag_unary unary ->
