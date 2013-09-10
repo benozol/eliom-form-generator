@@ -25,6 +25,8 @@ cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
 
 all: META $(ELIOM_CLIENT_DIR)/eliom_form_generator.cmo $(ELIOM_SERVER_DIR)/eliom_form_generator.cmo
 
+test: test.ml
+	ocamlfind c -linkpkg -thread -syntax camlp4o -package ocsigenserver,ocsigenserver.ext.ocsipersist-sqlite,eliom.server,js_of_ocaml.deriving.syntax,deriving-typerepr.syntax,deriving-typerepr -I _server eliom_form_generator.cmo -o $@ $<
 
 $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
 	$(ELIOMC) -infer -package js_of_ocaml $(PA_COPTS) $<
