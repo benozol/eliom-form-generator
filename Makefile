@@ -20,8 +20,8 @@ PA_COPTS := -package deriving-ocsigen.syntax,js_of_ocaml.deriving.syntax,camlp4.
 
 .PHONY: all clean install uninstall depend
 
-SOURCE_FILES=$(wildcard *.eliom *.eliomi)
-cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
+SOURCE_FILES=eliom_form_generator.eliom eliom_form_generator.eliomi
+cmo_files=$(patsubst %.ml,%.cmo,$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES))))
 
 all: META $(ELIOM_CLIENT_DIR)/eliom_form_generator.cmo $(ELIOM_SERVER_DIR)/eliom_form_generator.cmo
 
@@ -37,17 +37,17 @@ $(ELIOM_SERVER_DIR)/%.cmo: %.eliom
 $(ELIOM_SERVER_DIR)/%.cmi: %.eliomi
 	$(ELIOMC) -annot -c $(OPTS) $(PA_COPTS) $<
 
+$(ELIOM_SERVER_DIR)/%.cmo: %.ml
+	$(ELIOMC) -annot $(PA_COPTS) -c $<
+
 $(ELIOM_CLIENT_DIR)/%.cmo: %.eliom
 	$(JS_OF_ELIOM) -annot -c $(OPTS) $(PA_COPTS) $<
 
 $(ELIOM_CLIENT_DIR)/%.cmi: %.eliomi
 	$(JS_OF_ELIOM) -annot -c $(OPTS) $(PA_COPTS) $<
 
-%.cmo: %.ml
-	$(OCAMLC) -syntax camlp4o $(PA_COPTS) -c -o $@ $<
-
-%_tc.cmo: %_tc.ml
-	$(OCAMLC) -syntax camlp4o $(PA_COPTS_TC) -c -o $@ $<
+$(ELIOM_CLIENT_DIR)/%.cmo: %.ml
+	$(JS_OF_ELIOM) -annot $(PA_COPTS) -c $<
 
 ifneq ($(MAKECMDGOALS),distclean)
 ifneq ($(MAKECMDGOALS),clean)
