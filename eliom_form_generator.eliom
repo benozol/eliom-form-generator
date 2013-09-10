@@ -1214,7 +1214,7 @@
     include Path
   end
 
-  let json_of_typerepr : type a . a t -> a Deriving_Json.t =
+  let rec json_module_of_typerepr : type a . a t -> (module Deriving_Json.Json with type a = a) =
     let for_atomic : type a . a atomic -> (module Deriving_Json.Json with type a = a) = function
       | Unit -> (module Deriving_Json.Json_unit)
       | Int -> (module Deriving_Json.Json_int)
@@ -1224,19 +1224,19 @@
       | Int32 -> (module Deriving_Json.Json_int32)
       | Int64 -> (module Deriving_Json.Json_int64)
     in
-    let rec aux : type a . a t -> (module Deriving_Json.Json with type a = a) = function
+    function
       | Atomic atomic -> for_atomic atomic
       | List t ->
-        let module Json = (val aux t) in
+        let module Json = (val json_module_of_typerepr t) in
         (module Deriving_Json.Json_list (Json))
       | Option t ->
-        let module Json = (val aux t) in
+        let module Json = (val json_module_of_typerepr t) in
         (module Deriving_Json.Json_option (Json))
       | Array t ->
-        let module Json = (val aux t) in
+        let module Json = (val json_module_of_typerepr t) in
         (module Deriving_Json.Json_array (Json))
       | Ref t ->
-        let module Json = (val aux t) in
+        let module Json = (val json_module_of_typerepr t) in
         (module Deriving_Json.Json_ref (Json))
       | Tuple ({ components } as tuple) ->
         (module
@@ -1248,7 +1248,7 @@
                  Buffer.add_string buffer "[0";
                  begin
                    flip List.iter components @ fun (Any_component (Component (t, _) as component)) ->
-                     let module Json = (val aux t) in
+                     let module Json = (val json_module_of_typerepr t) in
                      Buffer.add_char buffer ',';
                      Json.write buffer @
                        get_tuple_component component value
@@ -1257,7 +1257,7 @@
                let read buf =
                  let create_tuple_component =
                    fun (type b) (Component ((t : b t), _)) ->
-                     let module Json = (val aux t) in
+                     let module Json = (val json_module_of_typerepr t) in
                      Deriving_Json_lexer.read_comma buf;
                      Json.read buf
                  in
@@ -1281,7 +1281,7 @@
                      Printf.bprintf buffer "%d" ix
                    | Summand_unary unary ->
                      let ix, t = (unary : (_, _) unary :> _ * _) in
-                     let module Json = (val aux t) in
+                     let module Json = (val json_module_of_typerepr t) in
                      Printf.bprintf buffer "[%d," ix;
                      Json.write buffer value;
                      Buffer.add_char buffer ']'
@@ -1291,7 +1291,7 @@
                      begin
                        flip List.iter components @ fun (Any_component component) ->
                          let Component (t, _) = component in
-                         let module Json = (val aux t) in
+                         let module Json = (val json_module_of_typerepr t) in
                          Buffer.add_char buffer ',';
                          Json.write buffer @ get_tuple_component component value
                      end;
@@ -1319,7 +1319,7 @@
                        match summand with
                          | Summand_unary unary ->
                            let _, t = (unary : (_, _) unary :> _ * _) in
-                           let module Json = (val aux t) in
+                           let module Json = (val json_module_of_typerepr t) in
                            Deriving_Json_lexer.read_comma buf;
                            let value = Json.read buf in
                            ignore @ Deriving_Json_lexer.read_rbracket buf;
@@ -1327,7 +1327,7 @@
                          | Summand_nary nary ->
                            let tuple =
                              let create_tuple_component (type b) (Component ((t : b t), _)) =
-                               let module Json = (val aux t) in
+                               let module Json = (val json_module_of_typerepr t) in
                                Deriving_Json_lexer.read_comma buf;
                                Json.read buf
                              in
@@ -1342,7 +1342,7 @@
               end))
       | Variant ({ tagspecs } as variant) ->
         (module
-           Deriving_Json.Defaults
+           Deriving_Json.Defaults (* FIXME Implement for Deriving_Json.Defaults' *)
              (struct
                type x = a
                type a = x
@@ -1354,7 +1354,7 @@
                      Printf.bprintf buffer "%d" ix
                    | Tag_unary unary ->
                      let ix, t = (unary : (_, _) unary :> _ * _) in
-                     let module Json = (val aux t) in
+                     let module Json = (val json_module_of_typerepr t) in
                      Printf.bprintf buffer "[0,%d," ix;
                      Json.write buffer value;
                      Buffer.add_char buffer ']'
@@ -1364,7 +1364,7 @@
                      begin
                        flip List.iter components @ fun (Any_component component) ->
                          let Component (t, _) = component in
-                         let module Json = (val aux t) in
+                         let module Json = (val json_module_of_typerepr t) in
                          Buffer.add_char buffer ',';
                          Json.write buffer @ get_tuple_component component value
                      end;
@@ -1402,7 +1402,7 @@
                        match tagspec with
                          | Tag_unary unary ->
                            let _, t = (unary : (_, _) unary :> _ * _) in
-                           let module Json = (val aux t) in
+                           let module Json = (val json_module_of_typerepr t) in
                            Deriving_Json_lexer.read_comma buf;
                            let value = Json.read buf in
                            ignore @ Deriving_Json_lexer.read_rbracket buf;
@@ -1410,7 +1410,7 @@
                          | Tag_nary nary ->
                            let tuple =
                              let create_tuple_component (type b) (Component ((t : b t), _)) =
-                               let module Json = (val aux t) in
+                               let module Json = (val json_module_of_typerepr t) in
                                Deriving_Json_lexer.read_comma buf;
                                Json.read buf
                              in
@@ -1422,6 +1422,7 @@
                            res
                          | Tag_nullary _ -> assert false
                      end
+                   | _ -> failwith "Json_Json: Unexpected constructor"
               end))
       | Record ({ fields } as record) ->
         (module
@@ -1434,14 +1435,14 @@
                  begin
                    flip List.iter fields @ fun (_, Any_field field) ->
                      let Field (_, t) = field in
-                     let module Json = (val aux t) in
+                     let module Json = (val json_module_of_typerepr t) in
                      Buffer.add_char buffer ',';
                      Json.write buffer @ get_record_field field value
                  end;
                  Buffer.add_string buffer "]"
                let read buf =
                  let create_record_field (type  b) _ (Field (_, (t : b t))) =
-                   let module Json = (val aux t) in
+                   let module Json = (val json_module_of_typerepr t) in
                    Deriving_Json_lexer.read_comma buf;
                    Json.read buf
                  in
@@ -1453,9 +1454,10 @@
               end))
       | Function _ ->
         failwith "Eliom_form_generator.json_of_typerepr: function"
-    in
+
+  let json_of_typerepr : type a . a t -> a Deriving_Json.t =
     fun t ->
-      let module Json = (val aux t) in
+      let module Json = (val json_module_of_typerepr t) in
       Json.t
 }}
 
