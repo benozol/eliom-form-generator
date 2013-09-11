@@ -14,16 +14,16 @@ export ELIOM_CLIENT_DIR = _client
 
 FILES = files
 
-OPTS := -thread -package deriving-ocsigen
-PA_COPTS := -package deriving-ocsigen.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o
-PA_COPTS_TC := -package deriving-ocsigen.syntax_tc,js_of_ocaml.deriving.syntax_tc,camlp4.quotations.o
+OPTS := -thread -package deriving
+PA_COPTS := -package deriving.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o
+PA_COPTS_TC := -package deriving.syntax_tc,js_of_ocaml.deriving.syntax_tc,camlp4.quotations.o
 
 .PHONY: all clean install uninstall depend
 
 SOURCE_FILES=$(wildcard *.eliom)
 cmo_files=$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES)))
 
-TYPE_CONV=$(shell ocamlfind query deriving-ocsigen.syntax_tc 2> /dev/null)
+TYPE_CONV=$(shell ocamlfind query deriving.syntax_tc 2> /dev/null)
 SYNTAX_CMAS = pa_deriving_Form.cma
 ifneq "$(TYPE_CONV)" ""
 SYNTAX_CMAS += pa_deriving_Form_tc.cma

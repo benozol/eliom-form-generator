@@ -2,12 +2,12 @@ names = "deriving-eliom-form"
 version = "0.1"
 description = "Derive Eliom forms from type declarations"
 package "syntax" (
-  requires(syntax) = "deriving-ocsigen.syntax"
+  requires(syntax) = "deriving.syntax"
   archive(preprocessor,syntax) = "pa_deriving_Form.cma"
 )
 package "syntax_tc" (
   exists_if = "pa_deriving_Form_tc.cma"
-  requires(syntax) = "deriving-ocsigen.syntax_tc"
+  requires(syntax) = "deriving.syntax_tc"
   archive(preprocessor,syntax) = "pa_deriving_Form_tc.cma"
 )
 package "server" (
