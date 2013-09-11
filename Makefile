@@ -15,8 +15,8 @@ export ELIOM_CLIENT_DIR = _client
 
 FILES = files
 
-OPTS := -thread -package deriving-ocsigen,deriving-typerepr
-PA_COPTS := -package deriving-ocsigen.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o,deriving-typerepr.syntax
+OPTS := -thread -package deriving,deriving-typerepr
+PA_COPTS := -package deriving.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o,deriving-typerepr.syntax
 
 .PHONY: all clean install uninstall depend
 
