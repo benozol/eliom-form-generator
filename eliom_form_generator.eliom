@@ -83,6 +83,7 @@
 
   let form_outmost_class = "eliom-form-outmost"
   let form_class = "eliom-form"
+  let form_annotation_class = "eliom-form-annotation"
   let atomic_class = "eliom-form-atomic"
   let option_class = "eliom-form-option"
   let option_selector_class = "eliom-form-option-selector"
@@ -849,6 +850,12 @@
     fun configs value path name { summands } ->
       let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
+      let annotation =
+        Option.default [] @
+          flip Option.map annotation @ fun annotation ->
+            [ Html5.F.div ~a:[a_class [form_annotation_class]]
+                [pcdata annotation] ]
+      in
       let selector =
         let a = [ a_class [ sum_selector_class ] ] in
         let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
@@ -908,13 +915,19 @@
                 | Some outmost -> reset_required outmost
                 | None -> failwith "Generate_form: no outmost"
       }};
-      Html5.D.div ~a:(a_class [form_class; sum_class] :: a)
-        [span [selector; marker]; content ]
+      Html5.D.div ~a:(a_class [form_class; sum_class] :: a) @
+        [span [selector; marker]; content] @@ annotation
 
   and aux_form_variant  : type a b . a configs -> b value option -> (a, b) p -> string -> b variant -> form_content elt =
     fun configs value path name { tagspecs } ->
       let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
+      let annotation =
+        Option.default [] @
+          flip Option.map annotation @ fun annotation ->
+            [ Html5.F.div ~a:[a_class [form_annotation_class]]
+                [pcdata annotation] ]
+      in
       let selector =
         let a = [ a_class [ variant_selector_class ] ] in
         let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
@@ -974,13 +987,21 @@
                 | Some outmost -> reset_required outmost
                 | None -> failwith "Generate_form: no outmost"
       }};
-      Html5.D.div ~a:(a_class [form_class; variant_class] :: a)
-        [span [selector; marker]; content ]
+      Html5.D.div ~a:(a_class [form_class; variant_class] :: a) @
+        [span [selector; marker]; content ] @@ annotation
 
   and aux_form_record : type a b . a configs -> b value option -> (a, b) p -> string -> b record -> form_content elt =
     fun configs value path name { fields } ->
       let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
+      let annotation =
+        Option.default [] @
+          flip Option.map annotation @ fun annotation ->
+            [ Html5.F.tr
+                [ Html5.F.td [];
+                  Html5.F.td ~a:[a_class [form_annotation_class]]
+                    [pcdata annotation] ] ]
+      in
       let rows =
         flip List.map fields @ fun (field_name, Any_field (Field (_, t) as field)) ->
           let path = Record_field (field, path) in
@@ -998,6 +1019,7 @@
               [pcdata annotation]
           ]
       in
+      let rows = rows @@ annotation in
       Html5.D.table ~a:(a_class[form_class; record_class] :: a)
         (List.hd rows) (List.tl rows)
 
@@ -1101,6 +1123,11 @@
     fun configs value path name t ->
       let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
+      let annotation =
+        flip Option.map annotation @ fun annotation ->
+          [ Html5.F.div ~a:[a_class [form_annotation_class]]
+              [pcdata annotation] ]
+      in
       let selector =
         let checked = Option.map ((<>) None) @ Option.map Value.get value in
         let a = [a_class[option_selector_class]] in
@@ -1123,12 +1150,18 @@
                   | None -> failwith "Generate_form: no outmost"
       }};
       let a = a_class [form_class; option_class] :: a in
-      Html5.D.div ~a [ marked selector; content]
+      Html5.D.div ~a ([ marked selector; content  ] @@ Option.default [] annotation)
 
   and aux_form_list : type a b . a configs -> b list value option -> (a, b list) p -> name -> b t -> form_content elt =
     fun configs value path name t ->
       let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
       assert (template = None);
+      let annotation =
+        Option.default [] @
+          flip Option.map annotation @ fun annotation ->
+            [ Html5.F.div ~a:[a_class [form_annotation_class]]
+                [pcdata annotation] ]
+      in
       let add =
         Html5.D.Raw.a ~a:[a_class [button_add_class]] [
           span ~a:[a_class [label_class]] [pcdata "add"];
@@ -1162,7 +1195,7 @@
               Lwt.return ()
       }};
       let a = a_class [form_class; list_class] :: a in
-      Html5.D.div ~a [content]
+      Html5.D.div ~a (content :: annotation)
 
   type 'a pathed_config =
     | Pathed_config : ('a, 'b) p * 'b config -> 'a pathed_config
