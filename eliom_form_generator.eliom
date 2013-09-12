@@ -163,7 +163,9 @@
       Option.default_delayed (fun () -> Eliom_lib.error_any node "is_required") @
         control_element node
     with
-      | `Input input -> input ## required <- Js.bool is_required
+      | `Input input ->
+        if input ## _type <> Js.string "checkbox" then
+          input ## required <- Js.bool is_required
       | `Select select -> select ## required <- Js.bool is_required
       | `Textarea textarea -> textarea ## required <- Js.bool is_required
       | `Fieldset _ -> ()
