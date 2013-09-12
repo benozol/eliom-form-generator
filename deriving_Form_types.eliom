@@ -349,6 +349,39 @@ module Form_unit =
           []
      end)
 
+module Form_bool =
+  Make_atomic
+    (struct
+      type a = bool
+      type param_name = [`One of bool] Eliom_parameter.param_name
+      let params_type = Eliom_parameter.bool
+      type template_data = unit
+      type 'res template_data_fun = 'res
+      let template_data ~value:_ = ()
+      let template_data_lwt ~value:_ = Lwt.return ()
+      let apply_template_data_fun x = x
+      let default_widget : (_,_,_) widget =
+        let open Eliom_content.Html5.F in
+        fun ~param_names ?value ?(a=[]) ~template_data:() () ->
+          let a = (a :> Html5_types.input_attrib Eliom_content.Html5.F.attrib list) in
+          let hidden, value = hidden_value value in
+          match param_names with
+          | `Param_names (_, param_names) ->
+            let a =
+              if hidden then a_hidden `Hidden :: a else a
+            in [
+              bool_checkbox ~a ~name:param_names ?checked:value ();
+              input_marker;
+            ]
+          | `Display ->
+            if not hidden then
+              option_get_map ~default:[]
+                ~f:(fun x -> list_singleton (pcdata (if x then "yes" else "no")))
+                value
+            else []
+      let default_template = atomic_template default_template default_widget
+     end)
+
 (******************************************************************************)
 type string_or_empty = string
 module Form_string_or_empty =
