@@ -4,22 +4,28 @@
 .eliom-form-add-elt, .eliom-form-remove-elt {
   cursor: pointer;
 }
-.eliom-form-add-elt .eliom-form-label, .eliom-form-remove-elt .eliom-form-label {
+.eliom-form-add-elt .eliom-form-label,
+.eliom-form-remove-elt .eliom-form-label {
   display: none;
 }
 .eliom-form-add-elt .eliom-form-input-marker:after {
-  content: "+";
+  content: "add";
 }
 .eliom-form-remove-elt .eliom-form-input-marker:after {
-  content: "-";
+  content: "remove";
 }
 
-.eliom-form input {
+.eliom-form-atomic textarea[readonly],
+.eliom-form-atomic input[readonly] {
+  border: none;
+}
+
+.eliom-form input:not([readonly]) {
     box-shadow: 0px 0px 1px 2px rgba(0,0,0,0.5);
     border: none;
     outline: none;
 }
-.eliom-form input:invalid {
+.eliom-form input:invalid:not([readonly]) {
     box-shadow: 0 0 5px 2.5px rgba(255,160,160,1.0), 0px 0px 1px 2px rgba(0,0,0,0.5);
     border: none;
 }
@@ -47,11 +53,11 @@ table.eliom-form-outmost > tr.eliom-form:first-child > td {
      padding: 2px;
 }
 
-:required + .eliom-form-input-marker:before {
+:required:not([readonly]) + .eliom-form-input-marker:before {
     content: "*";
 }
 
-:invalid + .eliom-form-input-marker:before {
+:invalid:not([readonly]) + .eliom-form-input-marker:before {
     content: "!";
 }
 

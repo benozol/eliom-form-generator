@@ -812,18 +812,17 @@
       (Any_path p, Any_config c) :: List.remove_assoc (Any_path p) cs
     let plus (type w) (type a) cs1 cs2 =
       let
-        module Map = struct
-          include Map.Make
-            (struct
-              type t = a any_path
-              let compare = Pervasives.compare
-             end)
-          let from_list li =
-            List.fold_right (fun (x, y) -> add x y) li empty
-        end
+        module Map = Map.Make
+          (struct
+            type t = a any_path
+            let compare = Pervasives.compare
+           end)
       in
-      let cs1 = Map.from_list cs1 in
-      let cs2 = Map.from_list cs2 in
+      let map_from_list li =
+        List.fold_right (fun (x, y) -> Map.add x y) li Map.empty
+      in
+      let cs1 = map_from_list cs1 in
+      let cs2 = map_from_list cs2 in
       let merger (type b) _ c1 c2 =
         let force (Any_config c) = (Obj.magic c : b config) in
         Option.map (fun c -> Any_config c) @
@@ -1426,10 +1425,6 @@
                      end;
                      Buffer.add_char buffer ']'
                let read buf =
-                 let is_nullary = function
-                   | _, Any_tagspec (Tag_nullary _) -> true
-                   | _ -> false
-                 in
                  let find_tagspec ix =
                    flip List.find tagspecs @ fun (_, Any_tagspec tagspec) ->
                      ix =
