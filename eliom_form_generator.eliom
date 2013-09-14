@@ -107,6 +107,8 @@
   let content_snippet = "content"
   let list_class = "eliom-form-list"
   let list_item_class = "eliom-form-list-item"
+  let array_class = "eliom-form-array"
+  let array_item_class = "eliom-form-array-item"
   let button_add_class = "eliom-form-add-elt"
   let button_remove_class = "eliom-form-remove-elt"
   let marker = Eliom_content.Html5.F.(span ~a:[a_class [marker_class]] [])
@@ -226,6 +228,7 @@
         list_class, `List ;
         atomic_class, `Atomic ;
         variant_class, `Variant ;
+        array_class, `Array ;
       ]
     with
       | [_, category] -> category
@@ -329,7 +332,7 @@
         true
       | Some parent ->
         match categorize_form parent with
-          | `Tuple | `Record | `List | `Atomic -> true
+          | `Tuple | `Record | `List | `Array | `Atomic -> true
           | `Option ->
             let selector = option_selector parent in
             Js.to_bool @ selector ## checked
@@ -569,6 +572,35 @@
               List.filter ((<>) None) items
           in
           List.map (flip data_from_form t) items
+        | Array t ->
+          if category <> `Array then
+            Eliom_lib.error_any node "data_from_form: not array";
+          let ol =
+            Js.Opt.get
+              (Js.Opt.bind
+                 (Js.Opt.bind
+                    (node ## childNodes ## item (0))
+                    Dom_html.CoerceTo.element)
+                 Dom_html.CoerceTo.ol) @
+              fun () -> Eliom_lib.error_any node "data_from_form: first element not an ol"
+          in
+          let items =
+            flip List.map (Dom.list_of_nodeList @ ol ## childNodes) @ fun li ->
+              let li =
+                Js.Opt.get (Js.Opt.bind (Dom_html.CoerceTo.element li) Dom_html.CoerceTo.li) @
+                  fun () -> Eliom_lib.error_any li "data_from_form: not a li"
+              in
+              if has_class li array_item_class then
+                Some
+                  (Js.Opt.get (li ## childNodes ## item (0)) @
+                     fun () -> Eliom_lib.error_any li "data_from_form: no li content")
+              else None
+          in
+          let items =
+            List.map (function Some item -> item | None -> assert false) @
+              List.filter ((<>) None) items
+          in
+          Array.of_list @ List.map (flip data_from_form t) items
         | Sum { summands } ->
           if category <> `Sum then
             Eliom_lib.error_any node "data_from_form: sum";
@@ -648,8 +680,6 @@
           failwith "Generate_form.data_from_form: function"
         | Ref _ ->
           failwith "Generate_form.data_from_form: ref"
-        | Array _ ->
-          failwith "Generate_form.data_from_form: array"
 
  let name_any_t_custom_data =
    Eliom_content.Html5.Custom_data.create
@@ -1012,7 +1042,7 @@
         let a = a_class [list_item_class] :: a in
         Html5.D.li ~a [
           aux_form configs value path name t;
-          remove
+          remove;
         ]
       in
       ignore {unit{
@@ -1030,6 +1060,14 @@
               Lwt.return_unit
       }};
       item
+
+  and aux_array_item : type a b . a configs -> b value option -> (a, b) p -> int -> string -> b Deriving_Typerepr.t -> Html5_types.li elt =
+    fun configs value path _ix name t ->
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
+      let a = a_class [array_item_class] :: a in
+      Html5.D.li ~a [
+        aux_form configs value path name t;
+      ]
 
   and aux_atomic : type a b . a configs -> b value option -> (a, b) p -> string -> b atomic -> form_content elt =
     fun configs value path name atomic ->
@@ -1085,10 +1123,10 @@
           aux_form_option configs value path name t
         | List t ->
           aux_form_list configs value path name t
+        | Array t ->
+          aux_form_array configs value path name t
         | Variant tagspecs ->
           aux_form_variant configs value path name tagspecs
-        | Array _ ->
-          failwith "Generate_form.form: not for array"
         | Function _ ->
           failwith "Generate_form.form: not for functions"
         | Ref _ ->
@@ -1160,6 +1198,24 @@
               Lwt.return ()
       }};
       let a = a_class [form_class; list_class] :: a in
+      Html5.D.div ~a [content]
+
+  and aux_form_array : type a b . a configs -> b array value option -> (a, b array) p -> name -> b t -> form_content elt =
+    fun configs value path name t ->
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs value in
+      assert (template = None);
+      let content =
+        let items =
+          Option.default [] @
+            flip Option.map value @ fun array ->
+              flip List.mapi (Array.to_list @ Value.get array) @ fun ix value ->
+                let path = Array_item (ix, path) in
+                let value = Some (Value.kind array value) in
+                aux_array_item configs value path ix name t
+        in
+        Html5.D.ol ~a:[Html5.F.a_start 0] items
+      in
+      let a = a_class [form_class; array_class] :: a in
       Html5.D.div ~a [content]
 
   type 'a pathed_config =
