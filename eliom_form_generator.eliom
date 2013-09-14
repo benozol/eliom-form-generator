@@ -543,17 +543,17 @@
         | List t ->
           if category <> `List then
             Eliom_lib.error_any node "data_from_form: not list";
-          let ul =
+          let ol =
             Js.Opt.get
               (Js.Opt.bind
                  (Js.Opt.bind
                     (node ## childNodes ## item (0))
                     Dom_html.CoerceTo.element)
-                 Dom_html.CoerceTo.ul) @
-              fun () -> Eliom_lib.error_any node "data_from_form: first element not an ul"
+                 Dom_html.CoerceTo.ol) @
+              fun () -> Eliom_lib.error_any node "data_from_form: first element not an ol"
           in
           let items =
-            flip List.map (Dom.list_of_nodeList @ ul ## childNodes) @ fun li ->
+            flip List.map (Dom.list_of_nodeList @ ol ## childNodes) @ fun li ->
               let li =
                 Js.Opt.get (Js.Opt.bind (Dom_html.CoerceTo.element li) Dom_html.CoerceTo.li) @
                   fun () -> Eliom_lib.error_any li "data_from_form: not a li"
@@ -1143,7 +1143,7 @@
                 let value = Some (Value.kind list value) in
                 aux_list_item configs value path ix name t
         in
-        Html5.D.ul @ items @@ [ add_li ]
+        Html5.D.ol ~a:[Html5.F.a_start 0] @ items @@ [ add_li ]
       in
       ignore {unit{
         onload_or_now @ fun () ->
