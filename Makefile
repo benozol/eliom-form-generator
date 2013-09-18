@@ -15,13 +15,13 @@ export ELIOM_CLIENT_DIR = _client
 
 FILES = files
 
-OPTS := -thread -package deriving,deriving-typerepr
-PA_COPTS := -package deriving.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o,deriving-typerepr.syntax
+OPTS := -thread -package deriving,deriving.syntax,deriving-typerepr -ppopt pa_deriving_Typerepr.cmo
+PA_COPTS := -package deriving,deriving.syntax,js_of_ocaml.deriving.syntax,camlp4.quotations.o,deriving-typerepr.syntax
 
 .PHONY: all clean install uninstall depend
 
 SOURCE_FILES=eliom_form_generator.eliom eliom_form_generator.eliomi
-cmo_files=$(patsubst %.ml,%.cmo,$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) -sort $(SOURCE_FILES))))
+cmo_files=$(patsubst %.ml,%.cmo,$(patsubst %.eliom,%.cmo,$(shell eliomdep $(1) $(PA_COPTS) -sort $(SOURCE_FILES))))
 
 all: META $(ELIOM_CLIENT_DIR)/eliom_form_generator.cmo $(ELIOM_SERVER_DIR)/eliom_form_generator.cmo
 
@@ -29,7 +29,7 @@ test: test.ml
 	ocamlfind c -linkpkg -thread -syntax camlp4o -package ocsigenserver,ocsigenserver.ext.ocsipersist-sqlite,eliom.server,js_of_ocaml.deriving.syntax,deriving-typerepr.syntax,deriving-typerepr -I _server eliom_form_generator.cmo -o $@ $<
 
 $(ELIOM_TYPE_DIR)/%.type_mli: %.eliom
-	$(ELIOMC) -infer -package js_of_ocaml $(PA_COPTS) $<
+	$(ELIOMC) -infer $(PA_COPTS) $<
 
 $(ELIOM_SERVER_DIR)/%.cmo: %.eliom
 	$(ELIOMC) -annot -c $(OPTS) $(PA_COPTS) $<
@@ -58,12 +58,12 @@ endif
 endif
 
 .depend:
-	eliomdep -server $(SOURCE_FILES) > .depend
-	eliomdep -client $(SOURCE_FILES) >> .depend
+	eliomdep -server $(PA_COPTS) $(SOURCE_FILES) > .depend
+	eliomdep -client $(PA_COPTS) $(SOURCE_FILES) >> .depend
 
 depend:
-	eliomdep -server $(SOURCE_FILES) > .depend
-	eliomdep -client $(SOURCE_FILES) >> .depend
+	eliomdep -server $(PA_COPTS) $(SOURCE_FILES) > .depend
+	eliomdep -client $(PA_COPTS) $(SOURCE_FILES) >> .depend
 
 clean:
 	rm -rf *.cmi *.cmo *.cma $(ELIOM_TYPE_DIR) $(ELIOM_SERVER_DIR) $(ELIOM_CLIENT_DIR) META
