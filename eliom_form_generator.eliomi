@@ -20,6 +20,8 @@
      Html5_types.span_content Html5.elt) ->
     string template
 
+  type file deriving (Json, Typerepr)
+
   (** Auxiliary function for the construction of the [configs] parameter *)
   module Pathed_config : sig
 
@@ -73,6 +75,11 @@
   val json_module_of_typerepr : 'a Deriving_Typerepr.t -> (module Deriving_Json.Json with type a = 'a)
   val json_of_typerepr : 'a Deriving_Typerepr.t -> 'a Deriving_Json.t
 
+}}
+
+{server{
+  val file_info_get : file -> Ocsigen_extensions.file_info
+  val file_info_post : file -> Ocsigen_extensions.file_info
 }}
 
 {client{

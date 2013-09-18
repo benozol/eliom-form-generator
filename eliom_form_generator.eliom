@@ -110,10 +110,41 @@
   let list_item_class = "eliom-form-list-item"
   let array_class = "eliom-form-array"
   let array_item_class = "eliom-form-array-item"
+  let file_class = "eliom-form-file"
   let button_add_class = "eliom-form-add-elt"
   let button_remove_class = "eliom-form-remove-elt"
   let marker = Eliom_content.Html5.F.(span ~a:[a_class [marker_class]] [])
   let marked ?a input = Eliom_content.Html5.D.span ?a [ input ; marker ]
+
+
+  type file = Eliom_form_generator_file__ of int deriving (Json, Typerepr)
+  let nl_files_param_prefix = "eliomformgenerator"
+  let nl_files_param_name = "files"
+  let nl_files_param_list_elt_name = "file"
+  let nl_files_param_list_name = "list"
+  let nl_files_param =
+    let open Eliom_parameter in
+    make_non_localized_parameters
+      ~prefix:nl_files_param_prefix
+      ~name:nl_files_param_name
+      ~persistent:false
+      (list nl_files_param_list_name @ file nl_files_param_list_elt_name)
+}}
+
+{server{
+  let file_info_get, file_info_post =
+    let file_info get_non_localized_parameters (Eliom_form_generator_file__ ix) =
+      match get_non_localized_parameters nl_files_param with
+        | None ->
+          failwith "Eliom_form_generator.file_info"
+        | Some files ->
+          try
+            List.nth files ix
+          with Failure "List.nth" ->
+            failwith "Eliom_form_generator.file_info"
+    in
+    file_info Eliom_parameter.get_non_localized_get_parameters,
+    file_info Eliom_parameter.get_non_localized_post_parameters
 }}
 
 {client{
@@ -232,6 +263,7 @@
         atomic_class, `Atomic ;
         variant_class, `Variant ;
         array_class, `Array ;
+        file_class, `File
       ]
     with
       | [_, category] -> category
@@ -335,7 +367,7 @@
         true
       | Some parent ->
         match categorize_form parent with
-          | `Tuple | `Record | `List | `Array | `Atomic -> true
+          | `Tuple | `Record | `List | `Array | `Atomic | `File -> true
           | `Option ->
             let selector = option_selector parent in
             Js.to_bool @ selector ## checked
@@ -477,7 +509,12 @@
 
     ()
 
-  let rec data_from_form : 'a . #Dom.node Js.t -> 'a Deriving_Typerepr.t -> 'a =
+  type file_inputs = (file * Dom_html.inputElement Js.t) list
+  let file_id =
+    let counter = ref (-1) in
+    fun () -> incr counter; !counter
+
+  let rec data_from_form : 'a . #Dom.node Js.t -> 'a Deriving_Typerepr.t -> 'a * file_inputs =
     fun (type a) node (t : a Deriving_Typerepr.t) ->
       trace_any node "data_from_form";
       if not @ has_class node form_class then
@@ -487,7 +524,7 @@
           fun () -> Eliom_lib.error_any node "data_from_form: not an html element"
       in
       let open Deriving_Typerepr in
-      let aux_tuple : 'a . Dom_html.element Js.t -> 'a tuple -> 'a =
+      let aux_tuple : 'a . Dom_html.element Js.t -> 'a tuple -> 'a * file_inputs =
         fun (type a) node tuple ->
           let category = categorize_form node in
           if category <> `Tuple then
@@ -495,10 +532,16 @@
           let component_contents =
             Dom.list_of_nodeList (node ## childNodes)
           in
-          create_tuple tuple
-            { create_tuple_component =
-                fun (Component (t, ix)) ->
-                  data_from_form (List.nth component_contents ix) t }
+          let files = ref [] in
+          let data =
+            create_tuple tuple
+              { create_tuple_component =
+                  fun (Component (t, ix)) ->
+                    let data, files' = data_from_form (List.nth component_contents ix) t in
+                    files := files' :: !files;
+                    data }
+          in
+          data, List.concat !files
       in
       let category = categorize_form node in
       let get_atomic_string name =
@@ -517,21 +560,32 @@
             | `Select select -> select ## value
             | `Fieldset _ -> assert false
       in
+      if Deriving_Typerepr.eq t Typerepr.t<file> then begin
+        if category <> `File then
+          Eliom_lib.error_any node "data_from_form: not file";
+        match Option.bind (querySelector node "input[type=file]") control_element with
+          |  Some (`Input input) ->
+            let id = file_id () in
+            let file = Eliom_form_generator_file__ id in
+            let force : file -> a = Obj.magic in
+            force file, [ file, input ]
+          | _ -> Eliom_lib.error_any node "data_from_form: no file input in file"
+      end else
       match (t : a t) with
         | Atomic Unit ->
           if category <> `Atomic then
             Eliom_lib.error_any node "data_from_form: unit not atomic";
-          (() : a)
-        | Atomic String -> identity @ get_atomic_string "string"
-        | Atomic Int -> int_of_string @ get_atomic_string "int"
-        | Atomic Float -> float_of_string @ get_atomic_string "float"
-        | Atomic Int32 -> Int32.of_string @ get_atomic_string "int32"
-        | Atomic Int64 -> Int64.of_string @ get_atomic_string "int64"
+          (() : a), []
+        | Atomic String -> identity @ get_atomic_string "string", []
+        | Atomic Int -> int_of_string @ get_atomic_string "int", []
+        | Atomic Float -> float_of_string @ get_atomic_string "float", []
+        | Atomic Int32 -> Int32.of_string @ get_atomic_string "int32", []
+        | Atomic Int64 -> Int64.of_string @ get_atomic_string "int64", []
         | Atomic Bool ->
           if category <> `Atomic then
             Eliom_lib.error_any node "data_from_form: bool not atomic";
           (match Option.bind (querySelector node "input[type=checkbox]") control_element with
-            | Some (`Input input) -> Js.to_bool @ input ## checked
+            | Some (`Input input) -> Js.to_bool @ input ## checked, []
             | _ -> Eliom_lib.error_any node "data_from_form: no checkbox found in bool")
         | Tuple tuple -> aux_tuple node tuple
         | Option t ->
@@ -543,9 +597,10 @@
               fun () -> Eliom_lib.error_any node "data_from_form: option no content"
           in
           if Js.to_bool @ selector ## checked then
-            Some (data_from_form content t)
+            let data, files = data_from_form content t in
+            Some data, files
           else
-            None
+            None, []
         | List t ->
           if category <> `List then
             Eliom_lib.error_any node "data_from_form: not list";
@@ -574,7 +629,11 @@
             List.map (function Some item -> item | None -> assert false) @
               List.filter ((<>) None) items
           in
-          List.map (flip data_from_form t) items
+          let datas, files =
+            List.split @
+              List.map (flip data_from_form t) items
+          in
+          datas, List.concat files
         | Array t ->
           if category <> `Array then
             Eliom_lib.error_any node "data_from_form: not array";
@@ -603,7 +662,11 @@
             List.map (function Some item -> item | None -> assert false) @
               List.filter ((<>) None) items
           in
-          Array.of_list @ List.map (flip data_from_form t) items
+          let datas, files =
+            List.split @
+              List.map (flip data_from_form t) items
+          in
+          Array.of_list datas, List.concat files
         | Sum { summands } ->
           if category <> `Sum then
             Eliom_lib.error_any node "data_from_form: sum";
@@ -614,14 +677,15 @@
           let Any_summand summand = List.assoc case summands in
           (match summand with
             | Summand_nullary _ as summand ->
-              create_sum_case summand ()
+              create_sum_case summand (), []
             | Summand_unary unary_summand as summand ->
               let _, t = (unary_summand : (_, _) unary :> _ * _) in
               let content =
                 Js.Opt.get (sum_case node case) ## childNodes ## item(0) @
                   fun () -> Eliom_lib.error_any  node "data_from_form: no elt for sum case %S" case
               in
-              create_sum_case summand @ data_from_form content t
+              let data, files = data_from_form content t in
+              create_sum_case summand data, files
             | Summand_nary nary_summand as summand ->
               let _, tuple = (nary_summand : (_, _) nary :> _ * _) in
               let content =
@@ -631,7 +695,8 @@
                      Dom_html.CoerceTo.element) @
                   fun () -> Eliom_lib.error_any  node "data_from_form: no tuple for sum case %S" case
               in
-              create_sum_case summand @ aux_tuple content tuple)
+              let data, files = aux_tuple content tuple in
+              create_sum_case summand data, files)
         | Variant { tagspecs } ->
           if category <> `Variant then
             Eliom_lib.error_any node "data_from_form: variant";
@@ -642,14 +707,15 @@
           let Any_tagspec tagspec = List.assoc case tagspecs in
           (match tagspec with
             | Tag_nullary _ as tag ->
-              create_variant_case tag ()
+              create_variant_case tag (), []
             | Tag_unary unary as tag ->
               let _, t = (unary : (_, _) unary :> _ * _) in
               let content =
                 Js.Opt.get (variant_case node case) ## childNodes ## item(0) @
                   fun () -> Eliom_lib.error_any  node "data_from_form: no elt for variant case %S" case
               in
-              create_variant_case tag @ data_from_form content t
+              let data, files = data_from_form content t in
+              create_variant_case tag data, files
             | Tag_nary nary as tag ->
               let _, tuple = (nary : (_, _) nary :> _ * _) in
               let content =
@@ -659,7 +725,8 @@
                      Dom_html.CoerceTo.element) @
                   fun () -> Eliom_lib.error_any  node "data_from_form: no tuple for variant case %S" case
               in
-              create_variant_case tag @ aux_tuple content tuple)
+              let data, files = aux_tuple content tuple in
+              create_variant_case tag data, files)
         | Record ({ fields } as record) ->
           if category <> `Record then
             Eliom_lib.error_any node "data_from_form: not record";
@@ -669,16 +736,20 @@
                 querySelector ~not_between:(flip has_class form_class)
                   node ".%s > *" (record_field_marker_class name)
           in
-          let f =
-            { create_record_field =
-                let f : 'b . string -> (a, 'b) Deriving_Typerepr.field -> 'b =
-                  fun _ field ->
-                    let Field (ix, t) = field in
-                    let content = List.nth field_contents ix in
-                    data_from_form (content :> Dom.node Js.t) t
-                in f }
+          let files = ref [] in
+          let data =
+            create_record record
+              { create_record_field =
+                  let f : 'b . string -> (a, 'b) Deriving_Typerepr.field -> 'b =
+                    fun _ field ->
+                      let Field (ix, t) = field in
+                      let content = List.nth field_contents ix in
+                      let data, files' = data_from_form (content :> Dom.node Js.t) t in
+                      files := files' :: !files;
+                      data
+                  in f }
           in
-          create_record record f
+          data, List.concat !files
         | Function _ ->
           failwith "Generate_form.data_from_form: function"
         | Ref _ ->
@@ -702,9 +773,9 @@
               flip Option.default_delayed (querySelector form ".%s" form_outmost_class) @
                 fun () -> Eliom_lib.error_any form "submit_for: No outmost form"
             in
-            let value = data_from_form (content :> Dom.node Js.t) t in
-            Eliom_lib.debug "submit_form: %s (%s)"
-              (show t value) (Eliom_lib.to_json value);
+            let value, files = data_from_form (content :> Dom.node Js.t) t in
+            Eliom_lib.debug "submit_form: %s (%s), %i files"
+              (show t value) (Eliom_lib.to_json value) (List.length files);
             let form' =
               Js.Opt.get
                 (Js.Opt.bind
@@ -720,7 +791,32 @@
                   ignore @ parent ## removeChild ((input :> Dom.node Js.t))
             end;
             let input = Html5.F.raw_input ~name ~input_type:`Text ~value:(Eliom_lib.to_json value) () in
+            let file_inputs =
+              flip List.map files @ fun (Eliom_form_generator_file__ ix, input) ->
+                Firebug.console##log_2 (js_string "File input %d" ix, input);
+                let input =
+                  Js.Opt.get
+                    (Js.Opt.bind
+                       (Dom_html.CoerceTo.element
+                          (input ## cloneNode (Js._true)))
+                       Dom_html.CoerceTo.input) @
+                    fun () -> assert false
+                in
+                let name : string =
+                  (* __nl_n_prefix-name.listname.name[0] *)
+                  Printf.sprintf "__nl_n_%s-%s.%s.%s[%i]"
+                    nl_files_param_prefix
+                    nl_files_param_name
+                    nl_files_param_list_name
+                    nl_files_param_list_elt_name
+                    ix
+                in
+                (let force : Dom_html.inputElement Js.t -> < name : Js.js_string Js.t Js.prop > Js.t = Obj.magic in
+                 (force input) ## name <- Js.string name);
+                input
+            in
             Dom.appendChild form' (Html5.To_dom.of_node input);
+            List.iter (Dom.appendChild form') file_inputs;
             ignore (form' ## onsubmit <- Eliom_client.form_handler);
             form' ## style ## display <- js_string "none";
             Dom.appendChild (Dom_html.document ## body) form';
@@ -1126,6 +1222,13 @@
               | Bool ->
                 raw_checkbox ~a ?checked:value ~name ~value:"" ()
 
+  and aux_file : type a . a configs -> (a, file) p -> string -> form_content elt =
+    fun configs path name ->
+      let { value ; a ; label ; annotation ; template } = configs_find_with_value path configs None in
+      let a = a_class [form_class; file_class] :: a in
+      marked ~a @
+        raw_input ~input_type:`File ~name ()
+
   and aux_form : type a b . ?is_outmost:bool -> a configs -> b value option -> (a, b) p -> string -> b t -> form_content elt =
     fun ?(is_outmost=false) configs value path name t ->
       let configs =
@@ -1133,6 +1236,10 @@
           Configs.add Root { Config.zero with a = [ a_class [form_outmost_class] ] } configs
         else configs
       in
+      if Deriving_Typerepr.eq t Typerepr.t<file> then
+        let force : (a, b) Deriving_Typerepr.p -> (a, file) Deriving_Typerepr.p = Obj.magic in
+        aux_file configs (force path) name
+      else
       match t with
         | Atomic atomic ->
           aux_atomic configs value path name atomic
