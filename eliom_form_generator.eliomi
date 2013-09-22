@@ -11,14 +11,22 @@
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name ->
     Html5_types.form_content Html5.elt
 
+  val display :
+    ?configs:('a pathed_config list) ->
+    'a Deriving_Typerepr.t ->
+    'a ->
+    Html5_types.div_content Html5.elt
+
   type 'a config
   type 'a value
   type 'a template
-  val string_widget :
-    (?value:[`Default of string|`Constant of string|`Hidden of string] ->
-     string Eliom_parameter.setoneradio Eliom_parameter.param_name ->
-     Html5_types.span_content Html5.elt) ->
-    string template
+
+  type 'a widget_fun =
+    [ |`Display of 'a value
+      |`Param_name of ('a Eliom_parameter.setoneradio Eliom_parameter.param_name * 'a value option)
+    ] -> Html5_types.span_content Eliom_content.Html5.elt
+
+  val string_widget : string widget_fun -> string template
 
   (** Auxiliary function for the construction of the [configs] parameter *)
   module Pathed_config : sig
