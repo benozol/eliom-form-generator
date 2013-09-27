@@ -22,7 +22,7 @@
 
   val atomic_display_widget :
     'a Deriving_Typerepr.atomic ->
-    ('a value -> Html5_types.span_content Html5.elt) ->
+    ('a -> Html5_types.span_content Html5.elt) ->
     ('a, [`Display]) template
   val atomic_content_widget :
     'a Deriving_Typerepr.atomic ->

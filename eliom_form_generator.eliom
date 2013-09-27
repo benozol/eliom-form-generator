@@ -804,7 +804,7 @@
           | None -> None
   end
 
-  type 'a atomic_display_fun = 'a value -> Html5_types.span_content Html5.elt
+  type 'a atomic_display_fun = 'a -> Html5_types.span_content Html5.elt
   type 'a atomic_content_fun = {
     content : 'a Eliom_parameter.setoneradio Eliom_parameter.param_name -> 'a value option -> Html5_types.span_content Html5.elt;
     to_data : (Dom_html.element Js.t -> 'a) client_value;
@@ -1205,7 +1205,9 @@
             in
             begin
               match name, atomic_widget with
-                | Display value, Display_widget f -> f value
+                | Display (`Default value|`Constant value), Display_widget f ->
+                  f value
+                | Display (`Hidden _), Display_widget _ -> pcdata ""
                 | Param_name (name, value), Content_widget { content ; to_data } ->
                   let name = (Obj.magic name : b Eliom_parameter.setoneradio Eliom_parameter.param_name) in
                   let id = atomic_to_datas_id () in
