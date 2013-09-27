@@ -1,5 +1,4 @@
 
-
 {shared{
 
   let css_filename = "eliom-form-generator.css"
@@ -908,16 +907,29 @@
               Some (a_hidden `Hidden)
             | _ -> None
         in
-        let display_or_content =
-          a_class [
-            match name with
-              | Display _ -> display_class
-              | Param_name _ -> content_class
-          ]
-        in
-        display_or_content :: Option.cons hidden a
+        Option.cons hidden a
       in
       name, a
+
+  let form_classes : type cd . (_, cd) param_name_or_display -> _ -> _ =
+    fun name t ->
+      let display_content_class =
+        match name with
+          | Display _ -> display_class
+          | Param_name _ -> content_class
+      in
+      let type_class =
+        match t with
+          | `Atomic -> atomic_class
+          | `Option -> option_class
+          | `Sum -> sum_class
+          | `Tuple -> tuple_class
+          | `Record -> record_class
+          | `List -> list_class
+          | `Variant -> variant_class
+          | `Array -> array_class
+      in
+      a_class [form_class; display_content_class; type_class]
 
   let rec aux_form_tuple : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b tuple -> form_content elt =
     fun configs path name { components } ->
@@ -925,7 +937,7 @@
       assert (template = None);
       ignore (annotation, label);
       let name, a = mixin value name a in
-      Html5.D.div ~a:(a_class [ form_class ; tuple_class ] :: a) @
+      Html5.D.div ~a:(form_classes name `Tuple :: a) @
         flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
           let name = param_name_or_display_map (Value.map @ get_tuple_component component) name in
           let path = Tuple_component (component, path) in
@@ -1024,7 +1036,7 @@
             }};
             span [selector; marker], [ content ]
       in
-      Html5.D.div ~a:(a_class [form_class; sum_class] :: a)
+      Html5.D.div ~a:(form_classes name `Sum :: a)
         (selector :: contents)
 
   and aux_form_variant  : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b variant -> form_content elt =
@@ -1118,7 +1130,7 @@
             }};
             span [selector; marker], [ content ]
       in
-      Html5.D.div ~a:(a_class [form_class; variant_class] :: a)
+      Html5.D.div ~a:(form_classes name `Variant :: a)
         (selector :: contents)
 
   and aux_form_record : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b record -> form_content elt =
@@ -1145,7 +1157,7 @@
               [pcdata annotation]
           ]
       in
-      Html5.D.table ~a:(a_class[form_class; record_class] :: a)
+      Html5.D.table ~a:(form_classes name `Record :: a)
         (List.hd rows) (List.tl rows)
 
   and aux_list_item : type a b cd . (a, cd) configs -> (a, b) p -> int -> (b, cd) param_name_or_display -> b Deriving_Typerepr.t -> Html5_types.li elt =
@@ -1195,8 +1207,7 @@
       let { value ; a ; label ; annotation ; template } = configs_find path configs in
       ignore (annotation, label);
       let name, a = mixin value name a in
-      let a = a_class [form_class; atomic_class] :: a in
-      marked ~a @
+      marked ~a:(form_classes name `Atomic :: a) @
         match template with
           | Some (Atomic_widget (atomic', atomic_widget)) when eq_atomic atomic atomic' ->
             let (name : (_, cd) param_name_or_display) =
@@ -1311,8 +1322,8 @@
             }};
             [marked selector], content
       in
-      let a = a_class [form_class; option_class] :: a in
-      Html5.D.div ~a (selector @@ [ content ])
+      Html5.D.div ~a:(form_classes name `Option :: a)
+        (selector @@ [ content ])
 
   and aux_form_list : type a b cd . (a, cd) configs -> (a, b list) p -> (b list, cd) param_name_or_display -> b t -> form_content elt =
     fun configs path name t ->
@@ -1320,6 +1331,7 @@
       assert (template = None);
       ignore (annotation, label);
       let name, a = mixin value name a in
+      let a = a_class [form_class; list_class] :: a in
       let content =
         match name with
           | Display list ->
@@ -1366,7 +1378,8 @@
             }};
             content
       in
-      Html5.D.div ~a [content]
+      Html5.D.div ~a:(form_classes name `List :: a)
+        [content]
 
   and aux_form_array : type a b cd . (a, cd) configs -> (a, b array) p -> (b array, cd) param_name_or_display -> b t -> form_content elt =
     fun configs path name t ->
@@ -1374,6 +1387,7 @@
       assert (template = None);
       ignore (annotation, label);
       let name, a = mixin value name a in
+      let a = a_class [ form_class ; array_class ] :: a in
       let content =
         let items =
           Option.default [] @
@@ -1385,8 +1399,8 @@
         in
         Html5.D.ol ~a:[Html5.F.a_start 0] items
       in
-      let a = a_class [form_class; array_class] :: a in
-      Html5.D.div ~a [content]
+      Html5.D.div ~a:(form_classes name `Array :: a)
+        [content]
 
   and aux_form : type a b cd . ?is_outmost:bool -> (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b t -> form_content elt =
     fun ?(is_outmost=false) configs path name t ->
