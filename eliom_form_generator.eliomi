@@ -2,31 +2,33 @@
 
   open Eliom_content
 
-  type 'a pathed_config
+  type 'a value = [ `Default of 'a | `Constant of 'a | `Hidden of 'a ]
+  type ('a, 'cd) config
+  type ('a, 'cd) template
+  type ('a, 'cd) pathed_config
 
   (** {1 Generate Eliom form content from runtime type representation} *)
   val content :
-    ?configs:('a pathed_config list) ->
+    ?configs:(('a, [`Content]) pathed_config list) ->
     'a Deriving_Typerepr.t ->
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name ->
     Html5_types.form_content Html5.elt
 
   val display :
-    ?configs:('a pathed_config list) ->
+    ?configs:(('a, [`Display]) pathed_config list) ->
     'a Deriving_Typerepr.t ->
     'a ->
     Html5_types.div_content Html5.elt
 
-  type 'a config
-  type 'a value
-  type 'a template
-
-  type 'a widget_fun =
-    [ |`Display of 'a value
-      |`Param_name of ('a Eliom_parameter.setoneradio Eliom_parameter.param_name * 'a value option)
-    ] -> Html5_types.span_content Eliom_content.Html5.elt
-
-  val string_widget : string widget_fun -> string template
+  val atomic_display_widget :
+    'a Deriving_Typerepr.atomic ->
+    ('a value -> Html5_types.span_content Html5.elt) ->
+    ('a, [`Display]) template
+  val atomic_content_widget :
+    'a Deriving_Typerepr.atomic ->
+    (Dom_html.element Js.t -> 'a) client_value ->
+    ('a Eliom_parameter.setoneradio Eliom_parameter.param_name -> 'a value option -> Html5_types.span_content Html5.elt) ->
+    ('a, [`Content]) template
 
   (** Auxiliary function for the construction of the [configs] parameter *)
   module Pathed_config : sig
@@ -40,13 +42,13 @@
       ?label:string ->
       ?annotation:string ->
       ?a:Html5_types.div_attrib Html5.attrib list ->
-      ?template:'a template ->
-      unit -> [> `Config of 'a config ]
-    val tree : 'a pathed_config list -> [> `Tree of 'a pathed_config list ]
+      ?template:('a, 'cd) template ->
+      unit -> [> `Config of ('a, 'cd) config ]
+    val tree : ('a, 'cd) pathed_config list -> [> `Tree of ('a, 'cd) pathed_config list ]
 
     open Deriving_Typerepr
     val (/) : ('a, 'b) p -> ('b, 'c) p -> ('a, 'c) p
-    val (-->) : ('a, 'b) p -> [ `Config of 'b config | `Tree of 'b pathed_config list ] -> 'a pathed_config
+    val (-->) : ('a, 'b) p -> [ `Config of ('b, 'cd) config | `Tree of ('b, 'cd) pathed_config list ] -> ('a, 'cd) pathed_config
 
     include module type of Deriving_Typerepr.Path
   end

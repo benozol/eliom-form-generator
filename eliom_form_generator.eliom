@@ -66,9 +66,15 @@
     else identity
   let before f x = f x; x
 
+  type to_data = Atomic_to_data : 'a Deriving_Typerepr.atomic * (Dom_html.element Js.t -> 'a) client_value -> to_data
+  let atomic_to_datas_name = "eliom-atomic-to-data-function-id"
+  let atomic_to_datas_attribute_name =
+    Printf.sprintf "data-%s" atomic_to_datas_name
 }}
 {client{
+
   let trace = Eliom_lib.trace
+
   let trace_any any fmt =
     let k str =
       if false then
@@ -78,9 +84,19 @@
     in
     Printf.ksprintf k fmt
 
+  let atomic_to_datas : (string, to_data) Hashtbl.t = Hashtbl.create 13
+  let atomic_to_datas_id =
+    let counter = ref (-1) in
+    fun () ->
+      Printf.sprintf "client-%i" (incr counter; !counter)
 }}
 {server{
   let trace fmt = ksprintf (fun str -> Ocsigen_messages.console @ fun () -> str) fmt
+  let atomic_to_datas_id =
+    let counter = ref (-1) in
+    fun () ->
+      Printf.sprintf "server-%i" (incr counter; !counter)
+
 }}
 
 {shared{
@@ -520,22 +536,39 @@
             | `Select select -> select ## value
             | `Fieldset _ -> assert false
       in
+      fun (type at) ->
       match (t : a t) with
-        | Atomic Unit ->
-          if category <> `Atomic then
-            Eliom_lib.error_any node "data_from_form: unit not atomic";
-          (() : a)
-        | Atomic String -> identity @ get_atomic_string "string"
-        | Atomic Int -> int_of_string @ get_atomic_string "int"
-        | Atomic Float -> float_of_string @ get_atomic_string "float"
-        | Atomic Int32 -> Int32.of_string @ get_atomic_string "int32"
-        | Atomic Int64 -> Int64.of_string @ get_atomic_string "int64"
-        | Atomic Bool ->
-          if category <> `Atomic then
-            Eliom_lib.error_any node "data_from_form: bool not atomic";
-          (match Option.bind (querySelector node "input[type=checkbox]") control_element with
-            | Some (`Input input) -> Js.to_bool @ input ## checked
-            | _ -> Eliom_lib.error_any node "data_from_form: no checkbox found in bool")
+        | Atomic atomic ->
+          Js.Opt.case
+            (node ## getAttribute (Js.string atomic_to_datas_attribute_name))
+            (fun () ->
+              match atomic with
+                | Unit ->
+                  if category <> `Atomic then
+                    Eliom_lib.error_any node "data_from_form: unit not atomic";
+                  (() : a)
+                | String -> identity @ get_atomic_string "string"
+                | Int -> int_of_string @ get_atomic_string "int"
+                | Float -> float_of_string @ get_atomic_string "float"
+                | Int32 -> Int32.of_string @ get_atomic_string "int32"
+                | Int64 -> Int64.of_string @ get_atomic_string "int64"
+                | Bool ->
+                  if category <> `Atomic then
+                    Eliom_lib.error_any node "data_from_form: bool not atomic";
+                  match Option.bind (querySelector node "input[type=checkbox]") control_element with
+                    | Some (`Input input) -> Js.to_bool @ input ## checked
+                    | _ -> Eliom_lib.error_any node "data_from_form: no checkbox found in bool")
+            (fun id ->
+              let id = Js.to_string id in
+              try
+                let Atomic_to_data (atomic', to_data) = Hashtbl.find atomic_to_datas id in
+                if eq_atomic atomic' atomic then
+                  let force : _ -> a = Obj.magic in
+                  force @ to_data node
+                else
+                  Eliom_lib.error_any node "data_from_form: custom to_data type doesn't match"
+              with Not_found ->
+                Eliom_lib.error_any node "data_from_form: custom to_data function not found")
         | Tuple tuple -> aux_tuple node tuple
         | Option t ->
           if category <> `Option then
@@ -682,6 +715,8 @@
                 in f }
           in
           create_record record f
+        | Abstract name ->
+          Printf.ksprintf failwith "Generate_form.data_from_form: abstract %s" name
         | Function _ ->
           failwith "Generate_form.data_from_form: function"
         | Ref _ ->
@@ -767,79 +802,77 @@
           | None -> None
   end
 
-  type 'a widget_fun =
-    [ |`Display of 'a value
-      |`Param_name of ('a Eliom_parameter.setoneradio Eliom_parameter.param_name * 'a value option)
-    ] -> Html5_types.span_content Eliom_content.Html5.elt
+  type 'a atomic_display_fun = 'a value -> Html5_types.span_content Html5.elt
+  type 'a atomic_content_fun = {
+    content : 'a Eliom_parameter.setoneradio Eliom_parameter.param_name -> 'a value option -> Html5_types.span_content Html5.elt;
+    to_data : (Dom_html.element Js.t -> 'a) client_value;
+  }
 
-  type 'a template =
-    | Widget : 'a atomic * 'a widget_fun -> 'a template
+  type ('a, 'cd) atomic_widget =
+    | Display_widget : 'a atomic_display_fun -> ('a, [`Display]) atomic_widget
+    | Content_widget : 'a atomic_content_fun -> ('a, [`Content]) atomic_widget
 
-  let string_widget f =
-    Widget (String, f)
+  type ('a, 'cd) template =
+    | Atomic_widget of 'a atomic * ('a, 'cd) atomic_widget
 
-  type 'a config = {
+  let atomic_display_widget a display = Atomic_widget (a, Display_widget display)
+  let atomic_content_widget a to_data content = Atomic_widget (a, Content_widget { content ; to_data })
+
+  type ('a, 'cd) param_name_or_display =
+    | Display : 'a value -> ('a, [`Display]) param_name_or_display
+    | Param_name : string * 'a value option -> ('a, [`Content]) param_name_or_display
+
+  type ('a, 'cd) config = {
     value : 'a value option;
     label : string option;
     annotation : string option;
     a : Html5_types.div_attrib Eliom_content.Html5.F.attrib list;
-    template : 'a template option
+    template : ('a, 'cd) template option
   }
-  module Config = struct
-    let zero = { value = None ; label = None ; annotation = None ; a = [] ; template = None}
-    let plus c1 c2 =
-      { value = Option.plus c1.value c2.value ;
-        label = Option.plus c1.label c2.label ;
-        annotation = Option.plus c1.annotation c2.annotation ;
-        a = List.append c1.a c2.a ;
-        template = Option.plus c1.template c2.template }
-  end
+  let config_zero = { value = None ; label = None ; annotation = None ; a = [] ; template = None}
+  let config_plus c1 c2 =
+    { value = Option.plus c1.value c2.value ;
+      label = Option.plus c1.label c2.label ;
+      annotation = Option.plus c1.annotation c2.annotation ;
+      a = List.append c1.a c2.a ;
+      template = Option.plus c1.template c2.template }
 
   type 'a any_path = Any_path : ('a, _) p -> 'a any_path
-  type any_config = Any_config : 'c config -> any_config
+  type 'cd any_config = Any_config : (_, 'cd) config -> 'cd any_config
 
-  module Configs : sig
-    type 'a configs
-    val zero : 'a configs
-    val add : ('a, 'b) p -> 'b config -> 'a configs -> 'a configs
-    val find : ('a, 'b) p -> 'a configs -> 'b config
-    val plus : 'a configs -> 'a configs -> 'a configs
-  end = struct
-    type 'a configs = ('a any_path * any_config) list
-    let zero = []
-    let find (type b) (p : (_, b) p) cs =
+  type ('a, 'cd) configs = ('a any_path * 'cd any_config) list
+  let configs_zero = []
+  let configs_find (type a) (type b) (type t) : (a, b) p -> (a, t) configs -> (b, t) config =
+    fun p cs ->
       try
         let Any_config config = List.assoc (Any_path p) cs in
-        (Obj.magic config : b config)
-      with Not_found -> Config.zero
-    let add p c cs =
-      let c0 = find p cs in
-      let c = Config.plus c c0 in
-      (Any_path p, Any_config c) :: List.remove_assoc (Any_path p) cs
-    let plus (type w) (type a) cs1 cs2 =
-      let
-        module Map = Map.Make
-          (struct
-            type t = a any_path
-            let compare = Pervasives.compare
-           end)
-      in
-      let map_from_list li =
-        List.fold_right (fun (x, y) -> Map.add x y) li Map.empty
-      in
-      let cs1 = map_from_list cs1 in
-      let cs2 = map_from_list cs2 in
-      let merger (type b) _ c1 c2 =
-        let force (Any_config c) = (Obj.magic c : b config) in
-        Option.map (fun c -> Any_config c) @
-          match Option.map force c1, Option.map force c2 with
-            | Some c1, Some c2 -> Some (Config.plus c1 c2)
-            | None, only | only, None -> only
-      in
-      Map.bindings @ Map.merge merger cs1 cs2
-  end
-
-  type 'a configs = 'a Configs.configs
+        (Obj.magic config : (b, t) config)
+      with Not_found -> config_zero
+  let configs_add p c cs =
+    let c0 = configs_find p cs in
+    let c = config_plus c c0 in
+    (Any_path p, Any_config c) :: List.remove_assoc (Any_path p) cs
+  let configs_plus (type w) (type a) cs1 cs2 =
+    let
+      module Map = Map.Make
+        (struct
+          type t = a any_path
+          let compare = Pervasives.compare
+         end)
+    in
+    let map_from_list li =
+      List.fold_right (fun (x, y) -> Map.add x y) li Map.empty
+    in
+    let cs1 = map_from_list cs1 in
+    let cs2 = map_from_list cs2 in
+    let merger (type b) (type t) _ c1 c2 =
+      let force (Any_config c) = (Obj.magic c : (b, t) config) in
+      Option.map (fun c -> Any_config c) @
+        match Option.map force c1, Option.map force c2 with
+          | Some c1, Some c2 -> Some (config_plus c1 c2)
+          | None, only | only, None -> only
+    in
+    Map.bindings @ Map.merge merger cs1 cs2
 
   let paths : type a . a -> a t -> a any_path list =
     fun value t ->
@@ -849,45 +882,33 @@
       in
       fold { folder } [] value t
 
-  let from_value : type a b . (a, b) p -> b value -> b t -> a configs =
-    fun original_path value t ->
-      let folder configs (Any_path path) =
-        Option.default configs @
-          flip Option.map (get (Value.get value) path) @ fun value' ->
-            let config = { Config.zero with value = Some (Value.kind value value') } in
-            let path = Deriving_Typerepr.compose path original_path in
-            Configs.add path config configs
-      in
-      List.fold_left folder Configs.zero @ paths (Value.get value) t
-
-  type 'a param_name_or_display = [ `Display of 'a value | `Param_name of string * 'a value option ]
-
-  let param_name_or_display_map : type a b . (a value -> b value) -> a param_name_or_display -> b param_name_or_display =
+  let param_name_or_display_map : type a b cd . (a value -> b value) -> (a, cd) param_name_or_display -> (b, cd) param_name_or_display =
     fun f -> function
-      | `Display x -> `Display (f x)
-      | `Param_name (name, opt) -> `Param_name (name, Option.map f opt)
+      | Display x -> Display (f x)
+      | Param_name (name, opt) -> Param_name (name, Option.map f opt)
 
-  let mixin : type a . a value option -> a param_name_or_display -> _ list -> a param_name_or_display * _ list =
+  let mixin : type a cd . a value option -> (a, cd) param_name_or_display -> _ list -> (a, cd) param_name_or_display * _ list =
     fun value name a ->
       let name =
         match value with
-          | None -> (name : a param_name_or_display)
+          | None -> (name : (a, cd) param_name_or_display)
           | Some value ->
-            (param_name_or_display_map (fun _ -> value) name : a param_name_or_display)
+            (param_name_or_display_map (fun _ -> value) name : (a, cd) param_name_or_display)
       in
       let a =
         let hidden =
           match name with
-            | `Display (`Hidden _)
-            | `Param_name (_, Some (`Hidden _)) ->
+            | Display (`Hidden _) ->
+              Some (a_hidden `Hidden)
+            | Param_name (_, Some (`Hidden _)) ->
               Some (a_hidden `Hidden)
             | _ -> None
         in
         let display_or_content =
           a_class [
             match name with
-              | `Display _ -> display_class
-              | `Param_name _ -> content_class
+              | Display _ -> display_class
+              | Param_name _ -> content_class
           ]
         in
         List.cons display_or_content @
@@ -895,9 +916,9 @@
       in
       name, a
 
-  let rec aux_form_tuple : type a b . a configs -> (a, b) p -> b param_name_or_display -> b tuple -> form_content elt =
+  let rec aux_form_tuple : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b tuple -> form_content elt =
     fun configs path name { components } ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       assert (template = None);
       ignore (annotation, label);
       let name, a = mixin value name a in
@@ -907,17 +928,18 @@
           let path = Tuple_component (component, path) in
           aux_form configs path name t
 
-  and aux_form_sum  : type a b . a configs -> (a, b) p -> b param_name_or_display -> b sum -> form_content elt =
+  and aux_form_sum : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b sum -> form_content elt =
     fun configs path name ({ summands } as sum) ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       assert (template = None);
       ignore annotation;
       let name, a = mixin value name a in
       let selector, contents =
-        match name with
-          | `Display value ->
+        match (name : (b, cd) param_name_or_display), (configs : (a, cd) configs) with
+          | Display value, configs ->
+            let configs = (configs : (a, [`Display]) configs) in
             let summand_name, Any_case_value (summand, arg) = get_sum_case sum (Value.get value) in
-            let name = `Display (Value.kind value arg) in
+            let name = Display (Value.kind value arg) in
             let selector =
               Html5.F.(span ~a:[a_class [ sum_selector_class ]] [pcdata summand_name])
             in
@@ -934,7 +956,8 @@
                   [ aux_form_tuple configs path name t ]
             in
             selector, content
-          | `Param_name (name, value) ->
+          | Param_name (name, value), configs ->
+            let configs = (configs : (a, [`Content]) configs) in
             let selector =
               let a = [ a_class [ sum_selector_class ] ] in
               let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
@@ -950,13 +973,13 @@
                     match summand with
                       | Summand_nullary summand ->
                         let path = Case_nullary (summand, path) in
-                        (Configs.find path configs).label
+                        (configs_find path configs).label
                       | Summand_unary summand ->
                         let path = Case_unary (summand, path) in
-                        (Configs.find path configs).label
+                        (configs_find path configs).label
                       | Summand_nary summand ->
                         let path = Case_nary (summand, path) in
-                        (Configs.find path configs).label
+                        (configs_find path configs).label
                   in
                   let label = Option.default summand_name label in
                   Html5.D.Option ([], summand_name, Some (pcdata label), selected)
@@ -972,7 +995,7 @@
                         Value.put_over_option @
                           Value.map (get_sum_case_by_summand summand) value
                     in
-                    `Param_name (name, opt_value)
+                    Param_name (name, opt_value)
                   in
                   div ~a:[a_class [sum_case_class; sum_case_marker_class summand_name]] @
                     match summand with
@@ -1001,17 +1024,17 @@
       Html5.D.div ~a:(a_class [form_class; sum_class] :: a)
         (selector :: contents)
 
-  and aux_form_variant  : type a b . a configs -> (a, b) p -> b param_name_or_display -> b variant -> form_content elt =
+  and aux_form_variant  : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b variant -> form_content elt =
     fun configs path name ({ tagspecs } as variant) ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       assert (template = None);
       ignore annotation;
       let name, a = mixin value name a in
       let selector, contents =
         match name with
-          | `Display value ->
+          | Display value ->
             let tag_name, Any_variant_value (tagspec, arg) = get_variant_case variant (Value.get value) in
-            let name = `Display (Value.kind value arg) in
+            let name = Display (Value.kind value arg) in
             let selector =
               Html5.F.(span ~a:[a_class [ variant_selector_class ]] [pcdata tag_name])
             in
@@ -1028,7 +1051,7 @@
                   [ aux_form_tuple configs path name t ]
             in
             selector, contents
-          | `Param_name (name, value) ->
+          | Param_name (name, value) ->
             let selector =
               let a = [ a_class [ variant_selector_class ] ] in
               let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
@@ -1044,13 +1067,13 @@
                     match tagspec with
                       | Tag_nullary nullary ->
                         let path = Variant_case_nullary (nullary, path) in
-                        (Configs.find path configs).label
+                        (configs_find path configs).label
                       | Tag_unary unary ->
                         let path = Variant_case_unary (unary, path) in
-                        (Configs.find path configs).label
+                        (configs_find path configs).label
                       | Tag_nary nary ->
                         let path = Variant_case_nary (nary, path) in
-                        (Configs.find path configs).label
+                        (configs_find path configs).label
                   in
                   let label = Option.default tagspec_name label in
                   Html5.D.Option ([], tagspec_name, Some (pcdata label), selected)
@@ -1066,7 +1089,7 @@
                         Value.put_over_option @
                           Value.map (get_variant_case_by_tagspec tagspec) value
                     in
-                    `Param_name (name, opt_value)
+                    Param_name (name, opt_value)
                   in
                   div ~a:[a_class [variant_case_class; variant_case_marker_class tagspec_name]] @
                     match tagspec with
@@ -1095,16 +1118,16 @@
       Html5.D.div ~a:(a_class [form_class; variant_class] :: a)
         (selector :: contents)
 
-  and aux_form_record : type a b . a configs -> (a, b) p -> b param_name_or_display -> b record -> form_content elt =
+  and aux_form_record : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b record -> form_content elt =
     fun configs path name { fields } ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       assert (template = None);
       let name, a = mixin value name a in
       let rows =
         flip List.map fields @ fun (field_name, Any_field (Field (_, t) as field)) ->
           let name = param_name_or_display_map (Value.map @ get_record_field field) name in
           let path = Record_field (field, path) in
-          let { a ; label ; annotation ; value ; template } = Configs.find path configs in
+          let { a ; label ; annotation ; value ; template } = configs_find path configs in
           ignore template;
           let name, a = mixin value name a in
           let label = Option.default field_name label in
@@ -1122,14 +1145,14 @@
       Html5.D.table ~a:(a_class[form_class; record_class] :: a)
         (List.hd rows) (List.tl rows)
 
-  and aux_list_item : type a b . a configs -> (a, b) p -> int -> b param_name_or_display -> b Deriving_Typerepr.t -> Html5_types.li elt =
+  and aux_list_item : type a b cd . (a, cd) configs -> (a, b) p -> int -> (b, cd) param_name_or_display -> b Deriving_Typerepr.t -> Html5_types.li elt =
     fun configs path _ix name t ->
       match name with
-        | `Display value ->
+        | Display value ->
           Html5.D.li ~a:[a_class [list_item_class]] [
-            aux_form configs path (`Display value) t;
+            aux_form configs path (Display value) t;
           ]
-        | `Param_name (name, value) ->
+        | Param_name (name, value) ->
           let remove =
             Html5.D.Raw.a ~a:[a_class [button_remove_class]] [
               span ~a:[a_class [label_class]] [pcdata "remove"];
@@ -1138,7 +1161,7 @@
           in
           let item =
             Html5.D.li ~a:[a_class [list_item_class]] [
-              aux_form configs path (`Param_name (name, value)) t;
+              aux_form configs path (Param_name (name, value)) t;
               remove;
             ]
           in
@@ -1158,28 +1181,45 @@
           }};
           item
 
-  and aux_array_item : type a b . a configs -> (a, b) p -> int -> b param_name_or_display -> b Deriving_Typerepr.t -> Html5_types.li elt =
+  and aux_array_item : type a b cd . (a, cd) configs -> (a, b) p -> int -> (b, cd) param_name_or_display -> b Deriving_Typerepr.t -> Html5_types.li elt =
     fun configs path _ix name t ->
       Html5.D.li ~a:[a_class [array_item_class]] [
         aux_form configs path name t;
       ]
 
-  and aux_atomic : type a b . a configs -> (a, b) p -> b param_name_or_display -> b atomic -> form_content elt =
+  and aux_atomic : type a b cd . (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b atomic -> form_content elt =
     fun configs path name atomic ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       ignore (annotation, label);
       let name, a = mixin value name a in
       let a = a_class [form_class; atomic_class] :: a in
       marked ~a @
         match template with
-          | Some (Widget (atomic', widget_fun)) when eq_atomic atomic atomic' ->
-            (widget_fun @
+          | Some (Atomic_widget (atomic', atomic_widget)) when eq_atomic atomic atomic' ->
+            let (name : (_, cd) param_name_or_display) =
               match name with
-                | `Display value -> `Display value
-                | `Param_name (name, value) -> `Param_name (Obj.magic name, value) : span_content elt)
+                | Display value -> Display value
+                | Param_name (name, value) -> Param_name (Obj.magic name, value)
+            in
+            begin
+              match name, atomic_widget with
+                | Display value, Display_widget f -> f value
+                | Param_name (name, value), Content_widget { content ; to_data } ->
+                  let name = (Obj.magic name : b Eliom_parameter.setoneradio Eliom_parameter.param_name) in
+                  let id = atomic_to_datas_id () in
+                  let to_data = Atomic_to_data (atomic, to_data) in
+                  ignore {unit{
+                    Hashtbl.add atomic_to_datas %id %to_data
+                  }};
+                  let elt = content name value in
+                  Html5.D.tot @
+                    let module Xml = Xml_iter.Make (Eliom_content.Xml) in
+                    Xml.amap1 (fun _ -> Xml.add_string_attrib atomic_to_datas_attribute_name id) @
+                      Html5.D.toelt elt
+            end
           | _ ->
             match name with
-              | `Display value ->
+              | Display value ->
                 let value = Value.get value in
                 begin
                   match atomic with
@@ -1197,7 +1237,7 @@
                     | Bool ->
                       span [pcdata @ if value then "true" else "false"]
                 end
-              | `Param_name (name, value) ->
+              | Param_name (name, value) ->
                 let a =
                   match value with
                     | Some (`Constant _) -> [a_readonly `ReadOnly]
@@ -1225,24 +1265,24 @@
                       raw_checkbox ~a ?checked:value ~name ~value:"" ()
                 end
 
-  and aux_form_option : type a b . a configs -> (a, b option) p -> b option param_name_or_display -> b t -> form_content elt =
+  and aux_form_option : type a b cd . (a, cd) configs -> (a, b option) p -> (b option, cd) param_name_or_display -> b t -> form_content elt =
     let open Html5.F in
     fun configs path name t ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       assert (template = None);
       ignore (annotation, label);
       let name, a = mixin value name a in
       let selector, content =
         match name with
-          | `Display value ->
+          | Display value ->
             begin
               match Value.get value with
                 | None -> [], Html5.F.span [pcdata "-/-"]
                 | Some value' ->
                   let path = Option_some path in
-                  [], aux_form configs path (`Display (Value.kind value value')) t
+                  [], aux_form configs path (Display (Value.kind value value')) t
             end
-          | `Param_name (name, value) ->
+          | Param_name (name, value) ->
             let selector =
               let checked = Option.map ((<>) None) @ Option.map Value.get value in
               let a = [a_class[option_selector_class]] in
@@ -1252,7 +1292,7 @@
               let path = Option_some path in
               let value = Option.bind value Value.put_over_option in
               div ~a:[a_class [option_content_class]]
-                [ aux_form configs path (`Param_name (name, value)) t ]
+                [ aux_form configs path (Param_name (name, value)) t ]
             in
             ignore {unit{
               onload_or_now @ fun () ->
@@ -1269,23 +1309,24 @@
       let a = a_class [form_class; option_class] :: a in
       Html5.D.div ~a (selector @@ [ content ])
 
-  and aux_form_list : type a b . a configs -> (a, b list) p -> b list param_name_or_display -> b t -> form_content elt =
+  and aux_form_list : type a b cd . (a, cd) configs -> (a, b list) p -> (b list, cd) param_name_or_display -> b t -> form_content elt =
     fun configs path name t ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       assert (template = None);
       ignore (annotation, label);
       let name, a = mixin value name a in
       let content =
         match name with
-          | `Display list ->
+          | Display list ->
             let items =
               flip List.mapi (Value.get list) @ fun ix value ->
                 let path = List_item (ix, path) in
-                let name = `Display (Value.kind list value) in
+                let name = Display (Value.kind list value) in
                 aux_list_item configs path ix name t
             in
             Html5.D.ol ~a:[Html5.F.a_start 0] @ items
-          | `Param_name (name, value) ->
+          | Param_name (name, value) ->
+            let configs = (configs : (_, [`Content]) configs) in
             let add =
               Html5.D.Raw.a ~a:[a_class [button_add_class]] [
                 span ~a:[a_class [label_class]] [pcdata "add"];
@@ -1299,7 +1340,7 @@
                   flip Option.map value @ fun list ->
                     flip List.mapi (Value.get list) @ fun ix value ->
                       let path = List_item (ix, path) in
-                      let name = `Display (Value.kind list value) in
+                      let name = Param_name (name, Some (Value.kind list value)) in
                       aux_list_item configs path ix name t
               in
               Html5.D.ol ~a:[Html5.F.a_start 0] @ items @@ [ add_li ]
@@ -1322,9 +1363,9 @@
       in
       Html5.D.div ~a [content]
 
-  and aux_form_array : type a b . a configs -> (a, b array) p -> b array param_name_or_display -> b t -> form_content elt =
+  and aux_form_array : type a b cd . (a, cd) configs -> (a, b array) p -> (b array, cd) param_name_or_display -> b t -> form_content elt =
     fun configs path name t ->
-      let { value ; a ; label ; annotation ; template } = Configs.find path configs in
+      let { value ; a ; label ; annotation ; template } = configs_find path configs in
       assert (template = None);
       ignore (annotation, label);
       let name, a = mixin value name a in
@@ -1342,11 +1383,11 @@
       let a = a_class [form_class; array_class] :: a in
       Html5.D.div ~a [content]
 
-  and aux_form : type a b . ?is_outmost:bool -> a configs -> (a, b) p -> b param_name_or_display -> b t -> form_content elt =
+  and aux_form : type a b cd . ?is_outmost:bool -> (a, cd) configs -> (a, b) p -> (b, cd) param_name_or_display -> b t -> form_content elt =
     fun ?(is_outmost=false) configs path name t ->
       let configs =
         if is_outmost then
-          Configs.add Root { Config.zero with a = [ a_class [form_outmost_class] ] } configs
+          configs_add Root { config_zero with a = [ a_class [form_outmost_class] ] } configs
         else configs
       in
       match t with
@@ -1366,31 +1407,33 @@
           aux_form_array configs path name t
         | Variant tagspecs ->
           aux_form_variant configs  path name tagspecs
+        | Abstract name ->
+          Printf.ksprintf failwith "Eliom_form_generator.form: abstract %s" name
         | Function _ ->
-          failwith "Generate_form.form: not for functions"
+          failwith "Eliom_form_generator.form: not for functions"
         | Ref _ ->
-          failwith "Generate_form.form: not for refs"
+          failwith "Eliom_form_generator.form: not for refs"
 
-  type 'a pathed_config =
-    | Pathed_config : ('a, 'b) p * 'b config -> 'a pathed_config
-    | Pathed_deep_config : ('a, 'b) p * 'b pathed_config list -> 'a pathed_config
+  type ('a, 'cd) pathed_config =
+    | Pathed_config : ('a, 'b) p * ('b, 'cd) config -> ('a, 'cd) pathed_config
+    | Pathed_deep_config : ('a, 'b) p * ('b, 'cd) pathed_config list -> ('a, 'cd) pathed_config
 
-  let rec flatten_pathed_config : type a b . (a, b) p -> b pathed_config list -> a configs -> a configs =
+  let rec flatten_pathed_config : type a b cd . (a, b) p -> (b, cd) pathed_config list -> (a, cd) configs -> (a, cd) configs =
     fun p pcs cs ->
       flip2 List.fold_left cs pcs @
         fun cs pc ->
           match pc with
             | Pathed_config (p', c) ->
-              Configs.add (compose p' p) c cs
+              configs_add (compose p' p) c cs
             | Pathed_deep_config (p', pcs) ->
               flatten_pathed_config (compose p' p) pcs cs
 
-  let content : type a . ?configs:a pathed_config list -> a t ->
+  let content : type a cd . ?configs:(a, [`Content]) pathed_config list -> a t ->
                   [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
     fun ?(configs=[]) t name ->
-      let configs = flatten_pathed_config Root configs Configs.zero in
+      let configs = flatten_pathed_config Root configs configs_zero in
       let name = (Obj.magic name : string) in
-      let content = aux_form ~is_outmost:true configs Root (`Param_name (name, None)) t in
+      let content = aux_form ~is_outmost:true configs Root (Param_name (name, None)) t in
       ignore {unit{
         onload_or_now @ fun () ->
           let content = Html5.To_dom.of_element %content in
@@ -1409,10 +1452,10 @@
       }};
       content
 
-  let display : type a . ?configs:a pathed_config list -> a t -> a -> div_content elt =
+  let display : type a . ?configs:(a, [`Display]) pathed_config list -> a t -> a -> div_content elt =
     fun ?(configs=[]) t value ->
-      let configs = flatten_pathed_config Root configs Configs.zero in
-      (aux_form ~is_outmost:true configs Root (`Display (`Default value)) t : form_content elt :> div_content elt)
+      let configs = flatten_pathed_config Root configs configs_zero in
+      (aux_form ~is_outmost:true configs Root (Display (`Default value)) t : form_content elt :> div_content elt)
 
   module Pathed_config = struct
     let (-->) p = function
@@ -1662,6 +1705,8 @@
                  Deriving_Json_lexer.read_rbracket buf;
                  res
               end))
+      | Abstract name ->
+        Printf.ksprintf failwith "Eliom_form_generator.json_of_typerepr: abstract %s" name
       | Function _ ->
         failwith "Eliom_form_generator.json_of_typerepr: function"
 
@@ -1675,7 +1720,7 @@
   let () =
     aux_list_item_content_ref :=
       fun ix name (Any_t t) ->
-        aux_list_item Configs.zero Root ix (`Param_name (name, None)) t
+        aux_list_item configs_zero Root ix (Param_name (name, None)) t
 
   let init_form form =
     Eliom_lib.debug "Eliom_form_generator.init_form";
