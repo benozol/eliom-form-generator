@@ -891,11 +891,13 @@
 
   let mixin : type a cd . a value option -> (a, cd) param_name_or_display -> _ list -> (a, cd) param_name_or_display * _ list =
     fun value name a ->
-      let name =
+      let name : (a, cd) param_name_or_display =
         match value with
-          | None -> (name : (a, cd) param_name_or_display)
+          | None -> name
           | Some value ->
-            (param_name_or_display_map (fun _ -> value) name : (a, cd) param_name_or_display)
+            match name with
+              | Display _ -> Display value
+              | Param_name (name, _) -> Param_name (name, Some value)
       in
       let a =
         let hidden =
@@ -913,8 +915,7 @@
               | Param_name _ -> content_class
           ]
         in
-        List.cons display_or_content @
-          Option.cons hidden a
+        display_or_content :: Option.cons hidden a
       in
       name, a
 
