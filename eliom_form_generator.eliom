@@ -65,6 +65,18 @@
     else identity
   let before f x = f x; x
 
+
+  let default_label_of_component_name s =
+    let s =
+      if Str.string_match (Str.regexp "[a-zA-Z]_+") s 0
+      then
+        let prefix_length = String.length (Str.matched_string s) in
+        String.sub s prefix_length (String.length s - prefix_length)
+      else s
+    in
+    let s = Str.global_replace (Str.regexp "_") " " s in
+    String.capitalize s
+
   type to_data = Atomic_to_data : 'a Deriving_Typerepr.atomic * (Dom_html.element Js.t -> 'a) client_value -> to_data
   let atomic_to_datas_attribute_name =
     "data-eliom-atomic-to-data-function-id"
@@ -1007,7 +1019,7 @@
                         let path = Case_nary (summand, path) in
                         (configs_find path configs).label
                   in
-                  let label = Option.default summand_name label in
+                  let label = Option.default (default_label_of_component_name summand_name) label in
                   Html5.D.Option ([], summand_name, Some (pcdata label), selected)
               in
               Html5.D.raw_select ~a ~name null summands
@@ -1101,7 +1113,7 @@
                         let path = Variant_case_nary (nary, path) in
                         (configs_find path configs).label
                   in
-                  let label = Option.default tagspec_name label in
+                  let label = Option.default (default_label_of_component_name tagspec_name) label in
                   Html5.D.Option ([], tagspec_name, Some (pcdata label), selected)
               in
               Html5.D.raw_select ~a ~name null tagspecs
@@ -1156,7 +1168,7 @@
           let { a ; label ; annotation ; value ; template } = configs_find path configs in
           ignore template;
           let name, a = mixin value name a in
-          let label = Option.default field_name label in
+          let label = Option.default (default_label_of_component_name field_name) label in
           let annotation = Option.default "" annotation in
           let content = aux_form configs path name t in
           tr ~a [
