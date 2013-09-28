@@ -1229,14 +1229,14 @@
                   let name = (Obj.magic name : b Eliom_parameter.setoneradio Eliom_parameter.param_name) in
                   let id = atomic_to_datas_id () in
                   let to_data = Atomic_to_data (atomic, to_data) in
+                  let elt = content ?value name in
                   ignore {unit{
-                    Hashtbl.add atomic_to_datas %id %to_data
+                    Hashtbl.add atomic_to_datas %id %to_data;
+                    onload_or_now @ fun () ->
+                      let elt = Eliom_content.Html5.To_dom.of_element %elt in
+                      elt ## setAttribute (Js.string atomic_to_datas_attribute_name, Js.string %id)
                   }};
-                  let elt = content name value in
-                  Html5.D.tot @
-                    let module Xml = Xml_iter.Make (Eliom_content.Xml) in
-                    Xml.amap1 (fun _ -> Xml.add_string_attrib atomic_to_datas_attribute_name id) @
-                      Html5.D.toelt elt
+                  elt
             end
           | _ ->
             match name with
