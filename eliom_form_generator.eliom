@@ -786,20 +786,25 @@
   type 'a value = [ `Default of 'a | `Constant of 'a | `Hidden of 'a ]
   module Value = struct
     let kind = function
-      | `Default _ -> fun x -> `Default x
-      | `Constant _ -> fun x -> `Constant x
-      | `Hidden _ -> fun x -> `Hidden x
+      | `Default _ -> `Default
+      | `Constant _ -> `Constant
+      | `Hidden _ -> `Hidden
     let get = function
       | `Default x -> x
       | `Constant x -> x
       | `Hidden x -> x
+    let with_kind kind value =
+      match kind with
+        | `Default -> `Default value
+        | `Constant -> `Constant value
+        | `Hidden -> `Hidden value
     let map =
       fun f v ->
-        kind v @ f @ get v
+        with_kind (kind v) @ f @ get v
     let put_over_option =
       fun v ->
         match get v with
-          | Some a -> Some (kind v a)
+          | Some a -> Some (with_kind (kind v) a)
           | None -> None
   end
 
@@ -954,7 +959,7 @@
           | Display value, configs ->
             let configs = (configs : (a, [`Display]) configs) in
             let summand_name, Any_case_value (summand, arg) = get_sum_case sum (Value.get value) in
-            let name = Display (Value.kind value arg) in
+            let name = Display Value.(with_kind (kind value) arg) in
             let selector =
               Html5.F.(span ~a:[a_class [ sum_selector_class ]] [pcdata summand_name])
             in
@@ -1049,7 +1054,7 @@
         match name with
           | Display value ->
             let tag_name, Any_variant_value (tagspec, arg) = get_variant_case variant (Value.get value) in
-            let name = Display (Value.kind value arg) in
+            let name = Display Value.(with_kind (kind value) arg) in
             let selector =
               Html5.F.(span ~a:[a_class [ variant_selector_class ]] [pcdata tag_name])
             in
@@ -1296,7 +1301,7 @@
                 | None -> [], Html5.F.span [pcdata "-/-"]
                 | Some value' ->
                   let path = Option_some path in
-                  [], aux_form configs path (Display (Value.kind value value')) t
+                  [], aux_form configs path (Display Value.(with_kind (kind value) value')) t
             end
           | Param_name (name, value) ->
             let selector =
@@ -1338,7 +1343,7 @@
             let items =
               flip List.mapi (Value.get list) @ fun ix value ->
                 let path = List_item (ix, path) in
-                let name = Display (Value.kind list value) in
+                let name = Display Value.(with_kind (kind list) value) in
                 aux_list_item configs path ix name t
             in
             Html5.D.ol ~a:[Html5.F.a_start 0] @ items
@@ -1357,7 +1362,7 @@
                   flip Option.map value @ fun list ->
                     flip List.mapi (Value.get list) @ fun ix value ->
                       let path = List_item (ix, path) in
-                      let name = Param_name (name, Some (Value.kind list value)) in
+                      let name = Param_name (name, Some Value.(with_kind (kind list) value)) in
                       aux_list_item configs path ix name t
               in
               Html5.D.ol ~a:[Html5.F.a_start 0] @ items @@ [ add_li ]
@@ -1394,7 +1399,7 @@
             flip Option.map value @ fun array ->
               flip List.mapi (Array.to_list @ Value.get array) @ fun ix value ->
                 let path = Array_item (ix, path) in
-                let name = param_name_or_display_map (fun _ -> Value.kind array value) name in
+                let name = param_name_or_display_map Value.(fun _ -> with_kind (kind array) value) name in
                 aux_array_item configs path ix name t
         in
         Html5.D.ol ~a:[Html5.F.a_start 0] items

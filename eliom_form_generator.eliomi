@@ -30,6 +30,12 @@
     ('a Eliom_parameter.setoneradio Eliom_parameter.param_name -> 'a value option -> Html5_types.span_content Html5.elt) ->
     ('a, [`Content]) template
 
+  module Value : sig
+    val kind : 'a value -> [`Default|`Constant|`Hidden]
+    val with_kind : [`Default|`Constant|`Hidden] -> 'a -> 'a value
+    val get : 'a value -> 'a
+  end
+
   (** Auxiliary function for the construction of the [configs] parameter *)
   module Pathed_config : sig
 
