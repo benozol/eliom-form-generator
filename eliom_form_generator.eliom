@@ -810,7 +810,7 @@
 
   type 'a atomic_display_fun = 'a -> Html5_types.span_content Html5.elt
   type 'a atomic_content_fun = {
-    content : 'a Eliom_parameter.setoneradio Eliom_parameter.param_name -> 'a value option -> Html5_types.span_content Html5.elt;
+    content : ?value:'a value -> 'a Eliom_parameter.setoneradio Eliom_parameter.param_name -> Html5_types.span_content Html5.elt;
     to_data : (Dom_html.element Js.t -> 'a) client_value;
   }
 
@@ -822,7 +822,7 @@
     | Atomic_widget of 'a atomic * ('a, 'cd) atomic_widget
 
   let atomic_display_widget a display = Atomic_widget (a, Display_widget display)
-  let atomic_content_widget a to_data content = Atomic_widget (a, Content_widget { content ; to_data })
+  let atomic_content_widget a content to_data = Atomic_widget (a, Content_widget { content ; to_data })
 
   type ('a, 'cd) param_name_or_display =
     | Display : 'a value -> ('a, [`Display]) param_name_or_display
@@ -1452,9 +1452,9 @@
             | Pathed_deep_config (p', pcs) ->
               flatten_pathed_config (compose p' p) pcs cs
 
-  let content : type a cd . ?configs:(a, [`Content]) pathed_config list -> a t ->
+  let content : type a cd . a t -> ?configs:(a, [`Content]) pathed_config list ->
                   [ `One of a Eliom_parameter.caml ] Eliom_parameter.param_name -> form_content elt =
-    fun ?(configs=[]) t name ->
+    fun t ?(configs=[]) name ->
       let configs = flatten_pathed_config Root configs configs_zero in
       let name = (Obj.magic name : string) in
       let content = aux_form ~is_outmost:true configs Root (Param_name (name, None)) t in
@@ -1476,8 +1476,8 @@
       }};
       content
 
-  let display : type a . ?configs:(a, [`Display]) pathed_config list -> a t -> a -> div_content elt =
-    fun ?(configs=[]) t value ->
+  let display : type a . a t -> ?configs:(a, [`Display]) pathed_config list -> a -> div_content elt =
+    fun t ?(configs=[]) value ->
       let configs = flatten_pathed_config Root configs configs_zero in
       (aux_form ~is_outmost:true configs Root (Display (`Default value)) t : form_content elt :> div_content elt)
 

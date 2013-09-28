@@ -9,15 +9,14 @@
 
   (** {1 Generate Eliom form content from runtime type representation} *)
   val content :
-    ?configs:(('a, [`Content]) pathed_config list) ->
     'a Deriving_Typerepr.t ->
+    ?configs:(('a, [`Content]) pathed_config list) ->
     [ `One of 'a Eliom_parameter.caml ] Eliom_parameter.param_name ->
     Html5_types.form_content Html5.elt
 
   val display :
-    ?configs:(('a, [`Display]) pathed_config list) ->
     'a Deriving_Typerepr.t ->
-    'a ->
+    ?configs:(('a, [`Display]) pathed_config list) ->    'a ->
     Html5_types.div_content Html5.elt
 
   val atomic_display_widget :
@@ -26,8 +25,8 @@
     ('a, [`Display]) template
   val atomic_content_widget :
     'a Deriving_Typerepr.atomic ->
+    (?value:'a value -> 'a Eliom_parameter.setoneradio Eliom_parameter.param_name -> Html5_types.span_content Html5.elt) ->
     (Dom_html.element Js.t -> 'a) client_value ->
-    ('a Eliom_parameter.setoneradio Eliom_parameter.param_name -> 'a value option -> Html5_types.span_content Html5.elt) ->
     ('a, [`Content]) template
 
   module Value : sig
