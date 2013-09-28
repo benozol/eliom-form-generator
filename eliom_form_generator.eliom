@@ -66,9 +66,8 @@
   let before f x = f x; x
 
   type to_data = Atomic_to_data : 'a Deriving_Typerepr.atomic * (Dom_html.element Js.t -> 'a) client_value -> to_data
-  let atomic_to_datas_name = "eliom-atomic-to-data-function-id"
   let atomic_to_datas_attribute_name =
-    Printf.sprintf "data-%s" atomic_to_datas_name
+    "data-eliom-atomic-to-data-function-id"
 }}
 {client{
 
@@ -540,8 +539,15 @@
       fun (type at) ->
       match (t : a t) with
         | Atomic atomic ->
+          let content =
+            let open Js.Opt in
+            get
+              (bind (node ## childNodes ## item (0))
+                 Dom_html.CoerceTo.element)
+            @ fun () -> Eliom_lib.error_any node "Atomic form element has no first element"
+          in
           Js.Opt.case
-            (node ## getAttribute (Js.string atomic_to_datas_attribute_name))
+            (content ## getAttribute (Js.string atomic_to_datas_attribute_name))
             (fun () ->
               match atomic with
                 | Unit ->
@@ -565,11 +571,11 @@
                 let Atomic_to_data (atomic', to_data) = Hashtbl.find atomic_to_datas id in
                 if eq_atomic atomic' atomic then
                   let force : _ -> a = Obj.magic in
-                  force @ to_data node
+                  force @ to_data content
                 else
-                  Eliom_lib.error_any node "data_from_form: custom to_data type doesn't match"
+                  Eliom_lib.error_any content "data_from_form: custom to_data type doesn't match"
               with Not_found ->
-                Eliom_lib.error_any node "data_from_form: custom to_data function not found")
+                Eliom_lib.error_any content "data_from_form: custom to_data function not found")
         | Tuple tuple -> aux_tuple node tuple
         | Option t ->
           if category <> `Option then
