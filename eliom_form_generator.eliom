@@ -67,14 +67,12 @@
 
 
   let default_label_of_component_name s =
-    let s =
-      if Str.string_match (Str.regexp "[a-zA-Z]_+") s 0
-      then
-        let prefix_length = String.length (Str.matched_string s) in
-        String.sub s prefix_length (String.length s - prefix_length)
-      else s
-    in
-    let s = Str.global_replace (Str.regexp "_") " " s in
+    let s = String.copy s in
+    (* No Str on client... *)
+    for i = 0 to pred @ String.length s do
+      if s.[i] = '_' then
+        s.[i] <- ' '
+    done;
     String.capitalize s
 
   type to_data = Atomic_to_data : 'a Deriving_Typerepr.atomic * (Dom_html.element Js.t -> 'a) client_value -> to_data
