@@ -1274,7 +1274,7 @@
                     | Float ->
                       span [pcdata @ string_of_float value]
                     | Bool ->
-                      span [pcdata @ if value then "true" else "false"]
+                      span [pcdata @ if value then "yes" else "no"]
                 end
               | Param_name (name, value) ->
                 let a =
