@@ -1678,7 +1678,7 @@
                          | Tag_nary nary ->
                            fst (nary : (_,_) nary :> _ * _)
                  in
-                 match Deriving_Json_lexer.read_case buf with
+                 match Deriving_Json_lexer.read_vcase buf with
                    | `Cst ix ->
                      let _, Any_tagspec tagspec = find_tagspec ix in
                      begin
