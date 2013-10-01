@@ -1090,7 +1090,7 @@
           | Param_name (name, value) ->
             let selector =
               let a = [ a_class [ variant_selector_class ] ] in
-              let null = Html5.D.Option ([], "", Some (pcdata "- select -"), value = None) in
+              let null = Html5.D.Option ([], "", Some (pcdata "- Select -"), value = None) in
               let tagspecs =
                 flip List.map tagspecs @ fun (tagspec_name, Any_tagspec tagspec) ->
                   let value = flip Option.map value (get_variant_case_by_tagspec tagspec -| Value.get) in

@@ -3,7 +3,7 @@ type t1 = A | B of int | C | D of int * int | E of (int * int) deriving (Json, T
 type t2 = { x : int ; y : string } deriving (Json, Typerepr)
 type t3 = t1 list * float deriving (Json, Typerepr)
 type ('a, 'b, 'c) t4 = ('a * 'b * 'c) option deriving (Json, Typerepr)
-type t5 = [ `A | `B of int | `C of int * int | `D of (int * int) ] deriving (Json, Typerepr)
+type t5 = [ `A | `B of int | `C of int * int | `D of (int * int) | `E ] deriving (Json, Typerepr)
 type t = (t1, t2, t3) t4 deriving (Json, Typerepr)
 
 let () =
@@ -34,6 +34,7 @@ let () =
   test Typerepr.t<t5> Json.t<t5> (`B 1);
   test Typerepr.t<t5> Json.t<t5> (`C (2, 3));
   test Typerepr.t<t5> Json.t<t5> (`D (2, 3));
+  test Typerepr.t<t5> Json.t<t5> `E;
   let test = test Typerepr.t<t> Json.t<t> in
   test None;
   test (Some (A, {x=2; y="abc"}, ([A;C;B 3], 123.456)));
