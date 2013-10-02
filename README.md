@@ -17,7 +17,7 @@ let form =
    let open Eliom_content.Html5.F in
    get_form ~service
      (fun name -> [
-        Generate_form.content Typerepr.t<my> name;
+        Eliom_form_generator.content Typerepr.t<my> name;
         button ~button_type:`Submit [pcdata "ok"];
         ])
 ```
