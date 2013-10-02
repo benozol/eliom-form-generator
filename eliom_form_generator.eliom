@@ -1685,18 +1685,18 @@
                        match tagspec with
                          | Tag_nullary _ as tag ->
                            create_variant_case tag ()
-                         | _ -> assert false
+                         | _ ->
+                           Printf.ksprintf failwith
+                             "Json_Json: Unexpected constructor %i: not nullary" ix
                      end
-                   | `NCst 0 ->
+                   | `NCst ix ->
                      begin
                        Deriving_Json_lexer.read_comma buf;
-                       let ix = Deriving_Json.Json_int.read buf in
                        let _, Any_tagspec tagspec = find_tagspec ix in
                        match tagspec with
                          | Tag_unary unary ->
                            let _, t = (unary : (_, _) unary :> _ * _) in
                            let module Json = (val json_module_of_typerepr t) in
-                           Deriving_Json_lexer.read_comma buf;
                            let value = Json.read buf in
                            ignore @ Deriving_Json_lexer.read_rbracket buf;
                            create_variant_case tagspec value
@@ -1713,9 +1713,10 @@
                            let res = create_variant_case tagspec tuple in
                            ignore @ Deriving_Json_lexer.read_rbracket buf;
                            res
-                         | Tag_nullary _ -> assert false
+                         | Tag_nullary _ ->
+                           Printf.ksprintf failwith
+                             "Json_Json: Unexpected constructor %i: nullary" ix
                      end
-                   | _ -> failwith "Json_Json: Unexpected constructor"
               end))
       | Record ({ fields } as record) ->
         (module
