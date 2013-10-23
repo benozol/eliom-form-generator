@@ -1288,16 +1288,16 @@
                       raw_input ~a ~input_type:`Text ?value ~name ()
                     | Int ->
                       let value = Option.map string_of_int value in
-                      raw_input ~a:(a_step (`Step 1.0) :: a) ~input_type:`Number ?value ~name ()
+                      raw_input ~a:(a_step (Some 1.0) :: a) ~input_type:`Number ?value ~name ()
                     | Int32 ->
                       let value = Option.map Int32.to_string value in
-                      raw_input ~a:(a_step (`Step 1.0) :: a) ~input_type:`Number ?value ~name ()
+                      raw_input ~a:(a_step (Some 1.0) :: a) ~input_type:`Number ?value ~name ()
                     | Int64 ->
                       let value = Option.map Int64.to_string value in
-                      raw_input ~a:(a_step (`Step 1.0) :: a) ~input_type:`Number ?value ~name ()
+                      raw_input ~a:(a_step (Some 1.0) :: a) ~input_type:`Number ?value ~name ()
                     | Float ->
                       let value = Option.map string_of_float value in
-                      raw_input ~a:(a_step `Any :: a) ~input_type:`Number ?value ~name ()
+                      raw_input ~a:(a_step None :: a) ~input_type:`Number ?value ~name ()
                     | Bool ->
                       raw_checkbox ~a ?checked:value ~name ~value:"" ()
                 end
